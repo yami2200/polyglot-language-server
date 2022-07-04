@@ -114,6 +114,18 @@ public class PolyglotTextDocumentService implements TextDocumentService {
                 listDiag.add(diagnostic);
             }
         }
+
+        HashMap<String, kotlin.Pair<Integer, Integer>> map_exp = Du.getExportInconsistencies();
+        for(String s : map_exp.keySet()){
+            kotlin.Pair<Integer, Integer> p = map_exp.get(s);
+            Diagnostic diagnostic = new Diagnostic();
+            diagnostic.setMessage(s+" : variable was exported but never imported");
+            diagnostic.setSource("Polyglot");
+            diagnostic.setRange(new Range(new Position(p.component1(),0), new Position(p.component1(), Integer.MAX_VALUE)));
+            diagnostic.setSeverity(DiagnosticSeverity.Information);
+            listDiag.add(diagnostic);
+        }
+
         this.diagHandler.addDiagnostics(uri, listDiag);
     }
 
