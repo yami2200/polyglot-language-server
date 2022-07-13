@@ -1,10 +1,7 @@
 //import com.example.polyglotast.PolyglotDUBuilder;
 import com.example.polyglotast.*;
 //import com.example.polyglotast.PolyglotTreeProcessor;
-import com.example.polyglotast.utils.ExportData;
-import com.example.polyglotast.utils.ExportImportStep;
-import com.example.polyglotast.utils.FileNotFoundInfo;
-import com.example.polyglotast.utils.ImportData;
+import com.example.polyglotast.utils.*;
 import com.google.common.collect.ImmutableList;
 import org.eclipse.lsp4j.*;
 import org.eclipse.lsp4j.jsonrpc.messages.Either;
@@ -306,6 +303,16 @@ public class PolyglotTextDocumentService implements TextDocumentService {
                                 new Range(new Position(importData.getLine_pos(), importData.getChar_pos()), new Position(importData.getLine_pos_end(), importData.getChar_pos_end())),
                                 importData.getFilePath());
                     }
+                }
+            }
+
+            for (CodeArea codeArea : du.getEvalSameFile()) {
+                if(!diagnosticsID.contains("evalSameFile"+codeArea.id)) {
+                    diagnosticsID.add("evalSameFile"+codeArea.id);
+                    this.addImportExportDiagnostic("Dangerous file eval. You are evaluating the same file you are currently in.",
+                            "Polyglot Eval", DiagnosticSeverity.Error, codeArea.filePath,
+                            new Range(new Position(codeArea.line_pos, codeArea.char_pos), new Position(codeArea.line_pos_end, codeArea.char_pos_end)),
+                            codeArea.filePath);
                 }
             }
 
