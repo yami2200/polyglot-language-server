@@ -1,11 +1,7 @@
-//import com.example.polyglotast.PolyglotDUBuilder;
 import com.example.polyglotast.*;
-//import com.example.polyglotast.PolyglotTreeProcessor;
 import com.example.polyglotast.utils.*;
-import com.google.common.collect.ImmutableList;
 import org.eclipse.lsp4j.*;
 import org.eclipse.lsp4j.jsonrpc.messages.Either;
-import org.eclipse.lsp4j.services.LanguageClient;
 import org.eclipse.lsp4j.services.TextDocumentService;
 
 import java.io.File;
@@ -17,7 +13,6 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.CompletionStage;
 
 public class PolyglotTextDocumentService implements TextDocumentService {
 
@@ -194,13 +189,65 @@ public class PolyglotTextDocumentService implements TextDocumentService {
     public CompletableFuture<Either<List<CompletionItem>, CompletionList>> completion(CompletionParams position) {
         return CompletableFuture.supplyAsync(() -> {
             this.clientLogger.logMessage("Operation '" + "text/completion");
-            CompletionItem completionItem = new CompletionItem();
-            completionItem.setLabel("import oui");
-            completionItem.setInsertText("var oui = polyglot.import(\"oui\")");
-            completionItem.setDetail("Polyglot Import");
-            completionItem.setKind(CompletionItemKind.Snippet);
-            return Either.forLeft(Arrays.asList(completionItem));
+            ArrayList<CompletionItem> listItems = new ArrayList<>();
+            try {
+                this.checkCompletion(position, listItems);
+            } catch (URISyntaxException e) {
+                throw new RuntimeException(e);
+            }
+            return Either.forLeft(listItems);
         });
+    }
+
+    public void checkCompletion(CompletionParams position, ArrayList<CompletionItem> listCompletions) throws URISyntaxException {
+        // Check Import Variable
+        if(position.getPosition().getCharacter() == 0){
+            PolyglotTreeHandler currentTree = PolyglotTreeHandler.getfilePathToTreeHandler().get(Paths.get(new URI(position.getTextDocument().getUri())));
+            if(currentTree == null) return;
+            PolyglotVariableSpotter varSpotter = new PolyglotVariableSpotter();
+            for (PolyglotTreeHandler hostTree : currentTree.getHostTrees()) {
+                hostTree.apply(varSpotter);
+            }
+            Set<String> listVarNotImported = new HashSet<String>(varSpotter.getExports().keySet());
+            for (String var : varSpotter.getExports().keySet()) {
+                if((varSpotter.getImports().containsKey(var) && varSpotter.getImports().get(var).containsKey(currentTree) && varSpotter.getImports().get(var).get(currentTree).size() > 0) || varSpotter.getExports().get(var).containsKey(currentTree)) listVarNotImported.remove(var);
+            }
+            for (String var : listVarNotImported) {
+                CompletionItem completionItem = new CompletionItem();
+                completionItem.setLabel(var);
+                switch (currentTree.getLang()){
+                    case "python":
+                        completionItem.setInsertText(var+" = polyglot.import_value(name=\""+var+"\")\r\n");
+                        break;
+                    case "js":
+                    case "javascript":
+                        completionItem.setInsertText("let "+var+" = Polyglot.import(\""+var+"\");\r\n");
+                        break;
+                }
+
+                completionItem.setDetail("Polyglot Import "+var);
+                completionItem.setKind(CompletionItemKind.Variable);
+                listCompletions.add(completionItem);
+            }
+        }
+    }
+
+    @Override
+    public CompletableFuture<List<Either<Command, CodeAction>>> codeAction(CodeActionParams params) {
+        this.clientLogger.logMessage("Operation '" + "text/codeAction" + "' {fileUri: '" + params.getTextDocument().getUri() + "'} Code Action");
+        return TextDocumentService.super.codeAction(params);
+    }
+
+    @Override
+    public CompletableFuture<CodeAction> resolveCodeAction(CodeAction unresolved) {
+        this.clientLogger.logMessage("Operation '" + "text/resolveCodeAction" + "' {title: '" + unresolved.getTitle() + "'} Resolve Code Action");
+        return TextDocumentService.super.resolveCodeAction(unresolved);
+    }
+
+    @Override
+    public CompletableFuture<DocumentDiagnosticReport> diagnostic(DocumentDiagnosticParams params) {
+        this.clientLogger.logMessage("Operation '" + "text/Diagnostic" + "' {title: '" + params.getTextDocument().getUri() + "'} Diagnostic");
+        return TextDocumentService.super.diagnostic(params);
     }
 
     @Override
