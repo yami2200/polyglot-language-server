@@ -1,0 +1,27 @@
+{
+  "ls" : [
+    {
+      "language" : "python",
+      "ip" : "127.0.0.1",
+      "port" : 2087,
+      "command": [
+        "/home/romain/Desktop/LanguageServersTest/python-language-server-develop/venv/bin/python",
+        "/home/romain/Desktop/LanguageServersTest/python-language-server-develop/pyls/__main__.py",
+        "--tcp",
+        "--host",
+        "127.0.0.1",
+        "--port",
+        "2087"
+      ]
+    },
+    {
+      "language" : "javascript",
+      "ip" : "127.0.0.1",
+      "port" : 2089,
+      "command": [
+        "/home/romain/bin/node-v16.15.1-linux-x64/bin/node",
+        "/home/romain/Desktop/LanguageServersTest/javascript-typescript-langserver-master/lib/language-server"
+      ]
+    }
+  ]
+}

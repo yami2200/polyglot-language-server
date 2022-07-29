@@ -165,6 +165,16 @@ public class PolyglotTextDocumentService implements TextDocumentService {
         for (Path pathUpdatedTree : paths) {
             this.diagHandler.publishDiagnostics(pathUpdatedTree.toUri().toString());
         }
+
+        // SEND REQUEST TO LANGUAGE SERVER FOR THE SPECIFIC LANGUAGE
+        DidOpenTextDocumentParams params = new DidOpenTextDocumentParams();
+        TextDocumentItem tdi = new TextDocumentItem();
+        tdi.setVersion(1);
+        tdi.setLanguageId(language);
+        tdi.setUri(uri);
+        tdi.setText(Files.readString(path));
+        params.setTextDocument(tdi);
+        this.languageServer.languageClientManager.didOpenRequest(params);
     }
 
     public void createTreesFromDirectory(String filePath) throws IOException {

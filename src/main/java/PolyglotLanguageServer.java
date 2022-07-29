@@ -1,3 +1,6 @@
+import com.google.gson.Gson;
+import com.google.gson.JsonIOException;
+import com.google.gson.JsonSyntaxException;
 import org.eclipse.lsp4j.ClientCapabilities;
 import org.eclipse.lsp4j.CompletionOptions;
 import org.eclipse.lsp4j.CompletionRegistrationOptions;
@@ -15,6 +18,10 @@ import org.eclipse.lsp4j.services.LanguageServer;
 import org.eclipse.lsp4j.services.TextDocumentService;
 import org.eclipse.lsp4j.services.WorkspaceService;
 
+import java.io.BufferedReader;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
@@ -26,6 +33,10 @@ public class PolyglotLanguageServer implements LanguageServer, LanguageClientAwa
     private ClientCapabilities clientCapabilities;
     LanguageClient languageClient;
     private int shutdown = 1;
+    protected InitializeParams initializationParams;
+    protected LanguageClientManager languageClientManager;
+    protected PolyglotLanguageServerProperties properties;
+    private CompletableFuture shutdownFuture;
 
     public PolyglotLanguageServer() {
         this.textDocumentService = new PolyglotTextDocumentService(this);
@@ -42,9 +53,17 @@ public class PolyglotLanguageServer implements LanguageServer, LanguageClientAwa
     public CompletableFuture<InitializeResult> initialize(InitializeParams initializeParams) {
         final InitializeResult response = new InitializeResult(new ServerCapabilities());
         //Set the document synchronization capabilities to full.
-        response.getCapabilities().setTextDocumentSync(TextDocumentSyncKind.Full);
+        response.getCapabilities().setTextDocumentSync(TextDocumentSyncKind.Incremental);
+        this.initializationParams = initializeParams;
         //response.getCapabilities().setHoverProvider(true);
         this.clientCapabilities = initializeParams.getCapabilities();
+
+        this.properties = getProperties();
+        if(this.properties == null){
+            throw new RuntimeException("Properties of Polyglot Language Server has not been loaded correctly");
+        }
+
+        this.languageClientManager = new LanguageClientManager(this);
 
         /* Check if dynamic registration of completion capability is allowed by the client. If so we don't register the capability.
            Else, we register the completion capability.
@@ -53,6 +72,30 @@ public class PolyglotLanguageServer implements LanguageServer, LanguageClientAwa
             response.getCapabilities().setCompletionProvider(new CompletionOptions());
         }
         return CompletableFuture.supplyAsync(() -> response);
+    }
+
+    private PolyglotLanguageServerProperties getProperties(){
+
+        try {
+            ClassLoader classLoader = getClass().getClassLoader();
+            InputStream is = classLoader.getResourceAsStream("properties/properties.json");
+            InputStreamReader streamReader = new InputStreamReader(is, StandardCharsets.UTF_8);
+            BufferedReader reader = new BufferedReader(streamReader);
+
+            PolyglotLanguageServerProperties prop = new Gson().fromJson(reader, PolyglotLanguageServerProperties.class);
+            return prop;
+        } catch (JsonSyntaxException | JsonIOException e) {
+            System.err.println(e);
+        }
+        return null;
+    }
+
+    public PolyglotLanguageServerProperties.LanguageServerInfo getLanguageInfo(String language){
+        System.err.println(this.properties.ls);
+        for (PolyglotLanguageServerProperties.LanguageServerInfo l : this.properties.ls) {
+            if(l.language.equals(language)) return l;
+        }
+        return null;
     }
 
     @Override
@@ -79,6 +122,7 @@ public class PolyglotLanguageServer implements LanguageServer, LanguageClientAwa
 
     @Override
     public void exit() {
+        this.languageClientManager.shutdown();
         System.exit(shutdown);
     }
 
