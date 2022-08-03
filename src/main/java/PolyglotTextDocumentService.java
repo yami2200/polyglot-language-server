@@ -19,6 +19,7 @@ public class PolyglotTextDocumentService implements TextDocumentService {
     private PolyglotLanguageServer languageServer;
     private LSClientLogger clientLogger;
     private PolyglotDiagnosticsHandler diagHandler;
+    private HashSet<Path> externLSOpenedPahts;
 
 
 
@@ -26,6 +27,7 @@ public class PolyglotTextDocumentService implements TextDocumentService {
         this.languageServer = languageServer;
         this.clientLogger = LSClientLogger.getInstance();
         this.diagHandler = new PolyglotDiagnosticsHandler(this.languageServer);
+        this.externLSOpenedPahts = new HashSet<>();
     }
 
     @Override
@@ -56,6 +58,7 @@ public class PolyglotTextDocumentService implements TextDocumentService {
     @Override
     public void didChange(DidChangeTextDocumentParams didChangeTextDocumentParams) {
         this.clientLogger.logMessage("Operation '" + "text/didChange" + "' {fileUri: '" + didChangeTextDocumentParams.getTextDocument().getUri() + "'} Changed");
+        this.languageServer.languageClientManager.didChangeRequest(didChangeTextDocumentParams);
 
         String uri = didChangeTextDocumentParams.getTextDocument().getUri();
         Path path;
@@ -91,6 +94,7 @@ public class PolyglotTextDocumentService implements TextDocumentService {
     @Override
     public void didSave(DidSaveTextDocumentParams didSaveTextDocumentParams) {
         this.clientLogger.logMessage("Operation '" + "text/didSave" + "' {fileUri: '" + didSaveTextDocumentParams.getTextDocument().getUri() + "'} Saved");
+        this.languageServer.languageClientManager.didSaveRequest(didSaveTextDocumentParams);
 
         String uri = didSaveTextDocumentParams.getTextDocument().getUri();
         Path path;
@@ -163,18 +167,12 @@ public class PolyglotTextDocumentService implements TextDocumentService {
         paths.addAll(this.checkInconsistencies(hostTrees));
 
         for (Path pathUpdatedTree : paths) {
+            // PUBLISH DIAGNOSTICS
             this.diagHandler.publishDiagnostics(pathUpdatedTree.toUri().toString());
-        }
 
-        // SEND REQUEST TO LANGUAGE SERVER FOR THE SPECIFIC LANGUAGE
-        DidOpenTextDocumentParams params = new DidOpenTextDocumentParams();
-        TextDocumentItem tdi = new TextDocumentItem();
-        tdi.setVersion(1);
-        tdi.setLanguageId(language);
-        tdi.setUri(uri);
-        tdi.setText(Files.readString(path));
-        params.setTextDocument(tdi);
-        this.languageServer.languageClientManager.didOpenRequest(params);
+            // SEND REQUEST TO LANGUAGE SERVER FOR THE SPECIFIC LANGUAGE
+            this.sendDidOpenRequestToLanguageServers(pathUpdatedTree);
+        }
     }
 
     public void createTreesFromDirectory(String filePath) throws IOException {
@@ -188,11 +186,28 @@ public class PolyglotTextDocumentService implements TextDocumentService {
                     String language = getLanguageFromExtension(splitURI[splitURI.length-1]);
                     if(!language.equals("none")){
                         PolyglotTreeHandler newTree = new PolyglotTreeHandler(path, language);
-                        System.err.println("Tree created : "+path);
+                        this.sendDidOpenRequestToLanguageServers(path);
+                        for (PolyglotTreeHandler subTree : newTree.getSubTrees()) {
+                            this.sendDidOpenRequestToLanguageServers(PolyglotTreeHandler.getfilePathOfTreeHandler().get(subTree));
+                        }
+                        this.clientLogger.logMessage("Tree created at path : "+path);
                     }
                 }
             }
         }
+    }
+
+    public void sendDidOpenRequestToLanguageServers(Path path) throws IOException {
+        if(this.externLSOpenedPahts.contains(path)) return;
+        DidOpenTextDocumentParams params = new DidOpenTextDocumentParams();
+        TextDocumentItem tdi = new TextDocumentItem();
+        tdi.setVersion(1);
+        tdi.setLanguageId(PolyglotTreeHandler.getfilePathToTreeHandler().get(path).getLang());
+        tdi.setUri(path.toUri().toString());
+        tdi.setText(Files.readString(path));
+        params.setTextDocument(tdi);
+        this.externLSOpenedPahts.add(path);
+        this.languageServer.languageClientManager.didOpenRequest(params);
     }
 
     @Override
@@ -206,6 +221,19 @@ public class PolyglotTextDocumentService implements TextDocumentService {
                 throw new RuntimeException(e);
             }
             return Either.forLeft(listItems);
+        });
+    }
+
+    @Override
+    public CompletableFuture<Hover> hover(HoverParams params) {
+        return CompletableFuture.supplyAsync(() -> {
+            Hover hov = new Hover();
+            hov.setContents(new MarkupContent(MarkupKind.MARKDOWN, "# Header\nSome text\n"));
+            Range r = new Range();
+            r.setStart(params.getPosition());
+            r.setEnd(new Position(2, 10));
+            hov.setRange(r);
+            return hov;
         });
     }
 
@@ -260,10 +288,88 @@ public class PolyglotTextDocumentService implements TextDocumentService {
         return TextDocumentService.super.diagnostic(params);
     }
 
-    @Override
+
+
+
+    /*@Override
     public CompletableFuture<Hover> hover(HoverParams params) {
-        return TextDocumentService.super.hover(params);
-    }
+        return null;
+        /*return CompletableFuture.supplyAsync(() -> {
+            Hover hov = new Hover();
+            hov.setContents(new MarkupContent(MarkupKind.MARKDOWN, "# Header\nSome text\n"));
+            Range r = new Range();
+            r.setStart(params.getPosition());
+            r.setEnd(new Position(2, 10));
+            hov.setRange(r);
+            System.err.println(hov);*/
+            //return new Hover(Collections.emptyList(), null);
+        /*    return null;
+        });*/
+
+        /*CompletableFuture<Hover> future = new CompletableFuture<>();
+        Hover hov = new Hover();
+        MarkupContent c = new MarkupContent();
+        c.setValue("test value");
+        c.setKind("plaintext");
+        hov.setContents(c);
+        Range r = new Range();
+        r.setStart(params.getPosition());
+        r.setEnd(new Position(2, 10));
+        hov.setRange(r);
+        future.complete(hov);
+        return future;*/
+        /*return CompletableFutures.computeAsync(new Executor() {
+            @Override
+            public void execute(@NotNull Runnable command) {
+                command.run();
+            }
+        }, cancelToken -> {
+            cancelToken.checkCanceled();
+            Hover hov = new Hover();
+            MarkupContent c = new MarkupContent();
+            c.setValue("test value");
+            c.setKind("markdown");
+            hov.setContents(c);
+            Range r = new Range();
+            r.setStart(params.getPosition());
+            r.setEnd(new Position(1, 10));
+            hov.setRange(r);
+            return hov;
+        });*/
+
+        /*System.err.println(params.getPosition());
+        Hover hov = new Hover();
+        MarkupContent c = new MarkupContent();
+        c.setValue("test value");
+        c.setKind("markdown");
+        hov.setContents(c);
+        Range r = new Range();
+        r.setStart(params.getPosition());
+        r.setEnd(new Position(1, 10));
+        hov.setRange(r);
+        System.err.println("Should Be Completed");
+        return CompletableFuture.completedFuture(hov);*/
+        /*return CompletableFutures.computeAsync(new Function<CancelChecker, Hover>() {
+            @Override
+            public Hover apply(CancelChecker cancelChecker) {
+                Hover hov = new Hover();
+                MarkupContent c = new MarkupContent();
+                c.setValue("test value");
+                c.setKind("test");
+                hov.setContents(c);
+                Range r = new Range();
+                cancelChecker.checkCanceled();
+                r.setStart(new Position(1, 1));
+                r.setEnd(new Position(1, 10));
+                hov.setRange(r);
+                System.err.println("Should Be Completed");
+                return hov;
+            }
+        });*/
+        /*return CompletableFutures.computeAsync((cancelToken, hov) -> {
+            //
+        });*/
+    //}
 
     private String getLanguageFromExtension(String extension){
         switch (extension){

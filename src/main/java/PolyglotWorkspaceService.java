@@ -16,6 +16,7 @@ public class PolyglotWorkspaceService implements WorkspaceService {
     @Override
     public void didRenameFiles(RenameFilesParams params) {
         this.clientLogger.logMessage("Operation 'workspace/didRenameFiles' Ack");
+        //this.languageServer.languageClientManager.didRenameFiles(params);
     }
 
     @Override

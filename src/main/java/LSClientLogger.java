@@ -26,7 +26,7 @@ public class LSClientLogger {
         return INSTANCE;
     }
 
-    public void logMessage(String message) {
+    public synchronized void logMessage(String message) {
         if (!isInitialized) {
             return;
         }

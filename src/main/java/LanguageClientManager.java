@@ -1,61 +1,137 @@
-import org.eclipse.lsp4j.DidOpenTextDocumentParams;
+import com.example.polyglotast.PolyglotTreeHandler;
+import org.eclipse.lsp4j.*;
 
 import java.io.*;
+import java.net.URI;
+import java.net.URISyntaxException;
+import java.nio.file.Paths;
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.concurrent.CompletableFuture;
 
 public class LanguageClientManager {
+    private final LSClientLogger clientLogger;
     HashMap<String, LanguageServerClient> languageClients;
-    HashMap<String, Process> languageServersProcess;
+    HashMap<LanguageServerClient, Process> languageServersProcess;
     PolyglotLanguageServer languageServer;
-
+    CompletableFuture<Object> shutdownFuture;
 
     public LanguageClientManager(PolyglotLanguageServer languageServer){
         this.languageClients = new HashMap<>();
         this.languageServersProcess = new HashMap<>();
         this.languageServer = languageServer;
+        this.clientLogger = LSClientLogger.getInstance();
     }
 
-    public CompletableFuture<Object> didOpenRequest(DidOpenTextDocumentParams params){
+    public void didOpenRequest(DidOpenTextDocumentParams params){
+        System.out.println(params);
         String language = params.getTextDocument().getLanguageId();
         if(languageClients.containsKey(language)){
-            return languageClients.get(language).didOpenRequest(params);
+            languageClients.get(language).didOpenRequest(params);
+            return;
         }
         LanguageServerClient newclient = createNewClient(language);
-        if(newclient == null) return null;
-        return newclient.didOpenRequest(params);
+        if(newclient == null) return;
+        newclient.didOpenRequest(params);
     }
 
-    public void shutdown(){
-        for (Process p : this.languageServersProcess.values()){
-            p.destroy();
-            System.err.println("process killed");
+    public void didChangeRequest(DidChangeTextDocumentParams params){
+        String language = "";
+        try {
+            language = PolyglotTreeHandler.getfilePathToTreeHandler().get(Paths.get(new URI(params.getTextDocument().getUri()))).getLang();
+        } catch (URISyntaxException e) {
+            System.err.println(e);
+            return;
         }
+        if(languageClients.containsKey(language)){
+            languageClients.get(language).didChangeRequest(params);
+            return;
+        }
+        LanguageServerClient newclient = createNewClient(language);
+        if(newclient == null) return;
+        newclient.didChangeRequest(params);
+    }
+
+    public void didSaveRequest(DidSaveTextDocumentParams params){
+        String language = "";
+        try {
+            language = PolyglotTreeHandler.getfilePathToTreeHandler().get(Paths.get(new URI(params.getTextDocument().getUri()))).getLang();
+        } catch (URISyntaxException e) {
+            System.err.println(e);
+            return;
+        }
+        if(languageClients.containsKey(language)){
+            languageClients.get(language).didSaveRequest(params);
+            return;
+        }
+        LanguageServerClient newclient = createNewClient(language);
+        if(newclient == null) return;
+        newclient.didSaveRequest(params);
+    }
+
+    public void didRenameFiles(RenameFilesParams params){
+        for (FileRename file : params.getFiles()) {
+            String language = "";
+            try {
+                language = PolyglotTreeHandler.getfilePathToTreeHandler().get(Paths.get(new URI(file.getOldUri()))).getLang();
+                RenameFilesParams param = new RenameFilesParams();
+                param.setFiles(Arrays.asList(file));
+                if(languageClients.containsKey(language)){
+                    languageClients.get(language).didRenameFiles(param);
+                } else {
+                    LanguageServerClient newclient = createNewClient(language);
+                    if(newclient != null) newclient.didRenameFiles(param);
+                }
+            } catch (URISyntaxException e) {
+                System.err.println(e);
+            }
+        }
+    }
+
+    public CompletableFuture<Object> shutdown(){
+        this.shutdownFuture = new CompletableFuture<Object>();
         for (LanguageServerClient client : this.languageClients.values()) {
-            client.shutdown();
-            client.interrupt();
+            try{
+                client.shutdown().thenApply((v) -> {
+                    Process p = this.languageServersProcess.get(client);
+                    if(p != null && p.isAlive()) p.destroy();
+                    this.languageServersProcess.remove(client);
+                    client.interrupt();
+                    if(languageServersProcess.size() == 0){
+                        this.shutdownFuture.complete(new Object());
+                    }
+                    return v;
+                });
+            } catch (Exception e){
+                System.err.println(e);
+            }
         }
+        return this.shutdownFuture;
     }
 
     public LanguageServerClient createNewClient(String language){
-        System.err.println(this.languageServer.properties.ls);
         PolyglotLanguageServerProperties.LanguageServerInfo lsInfo = this.languageServer.getLanguageInfo(language);
         if(lsInfo == null){
+            this.clientLogger.logMessage("No language Server configured for the language : "+language);
             System.err.println("No language Server configured for the language : "+language);
             return null;
         }
-        if(this.initializeConnection(lsInfo)){
-            LanguageServerClient client = new LanguageServerClient(lsInfo.language, lsInfo.ip, lsInfo.port, this.languageServer);
+        LanguageServerClient client = new LanguageServerClient(lsInfo.language, lsInfo.ip, lsInfo.port, this.languageServer);
+        if(this.initializeConnection(lsInfo, client)){
             this.languageClients.put(language, client);
             client.start();
             if(client.connect()){
+                this.clientLogger.logMessage("Successfully connected to language Server configured for the language : "+language);
                 return client;
+            } else {
+                this.clientLogger.logMessage("Couldn't connect to language Server configured for the language : "+language);
             }
         }
         return null;
     }
 
-    public boolean initializeConnection(PolyglotLanguageServerProperties.LanguageServerInfo lsInfo){
+    public boolean initializeConnection(PolyglotLanguageServerProperties.LanguageServerInfo lsInfo, LanguageServerClient client){
         if(this.languageClients.containsKey(lsInfo.language)){
             if(this.languageClients.get(lsInfo.language) != null){
                 this.languageClients.get(lsInfo.language).shutdown();
@@ -71,10 +147,11 @@ public class LanguageClientManager {
         try {
             ProcessBuilder builder = new ProcessBuilder(lsInfo.command);
             Process process = builder.inheritIO().start();
-            this.languageServersProcess.put(lsInfo.language, process);
+            this.languageServersProcess.put(client, process);
             return true;
         } catch (IOException e) {
             System.err.println(e);
+            this.clientLogger.logMessage(e.getMessage());
             return false;
         }
     }

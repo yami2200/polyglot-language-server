@@ -9,9 +9,8 @@ import org.eclipse.lsp4j.Range;
 import org.eclipse.lsp4j.jsonrpc.Launcher;
 import org.eclipse.lsp4j.services.LanguageClient;
 
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.OutputStream;
+import java.io.*;
+import java.net.Socket;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.nio.file.Paths;
@@ -23,7 +22,14 @@ import java.util.concurrent.Future;
 public class PolyglotLanguageServerLauncher {
 
     public static void main(String[] args) throws InterruptedException, ExecutionException, URISyntaxException, IOException {
-        startServer(System.in, System.out);
+        try {
+            Socket clientSocket = new Socket("127.0.0.1", 2088);
+            startServer(clientSocket.getInputStream(), clientSocket.getOutputStream());
+        } catch (IOException | InterruptedException | ExecutionException e) {
+            System.err.println(e);
+        }
+
+        //startServer(System.in, System.out);
     }
 
     /**
@@ -36,12 +42,10 @@ public class PolyglotLanguageServerLauncher {
     public static void startServer(InputStream in, OutputStream out) throws InterruptedException, ExecutionException, URISyntaxException, IOException {
         PolyglotLanguageServer server = new PolyglotLanguageServer();
         Launcher<LanguageClient> launcher = Launcher.createLauncher(server, LanguageClient.class, in, out);
-        System.err.println("created launcher");
         LanguageClient client = launcher.getRemoteProxy();
         server.connect(client);
         Future<?> startListening = launcher.startListening();
         startListening.get();
-        System.err.println("should be connected");
     }
 
 }

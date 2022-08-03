@@ -1,26 +1,14 @@
 import com.google.gson.Gson;
 import com.google.gson.JsonIOException;
 import com.google.gson.JsonSyntaxException;
-import org.eclipse.lsp4j.ClientCapabilities;
-import org.eclipse.lsp4j.CompletionOptions;
-import org.eclipse.lsp4j.CompletionRegistrationOptions;
-import org.eclipse.lsp4j.InitializeParams;
-import org.eclipse.lsp4j.InitializeResult;
-import org.eclipse.lsp4j.InitializedParams;
-import org.eclipse.lsp4j.Registration;
-import org.eclipse.lsp4j.RegistrationParams;
-import org.eclipse.lsp4j.ServerCapabilities;
-import org.eclipse.lsp4j.TextDocumentClientCapabilities;
-import org.eclipse.lsp4j.TextDocumentSyncKind;
+import org.eclipse.lsp4j.*;
 import org.eclipse.lsp4j.services.LanguageClient;
 import org.eclipse.lsp4j.services.LanguageClientAware;
 import org.eclipse.lsp4j.services.LanguageServer;
 import org.eclipse.lsp4j.services.TextDocumentService;
 import org.eclipse.lsp4j.services.WorkspaceService;
 
-import java.io.BufferedReader;
-import java.io.InputStream;
-import java.io.InputStreamReader;
+import java.io.*;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.UUID;
@@ -36,11 +24,21 @@ public class PolyglotLanguageServer implements LanguageServer, LanguageClientAwa
     protected InitializeParams initializationParams;
     protected LanguageClientManager languageClientManager;
     protected PolyglotLanguageServerProperties properties;
-    private CompletableFuture shutdownFuture;
+    CompletableFuture<Object> shutdownFuture;
 
     public PolyglotLanguageServer() {
         this.textDocumentService = new PolyglotTextDocumentService(this);
         this.workspaceService = new PolyglotWorkspaceService(this);
+
+        Thread closeChildLSThread = new Thread() {
+            public void run() {
+                for (Process p : languageClientManager.languageServersProcess.values()) {
+                    p.destroy();
+                };
+            }
+        };
+
+        Runtime.getRuntime().addShutdownHook(closeChildLSThread);
     }
 
     @Override
@@ -53,9 +51,10 @@ public class PolyglotLanguageServer implements LanguageServer, LanguageClientAwa
     public CompletableFuture<InitializeResult> initialize(InitializeParams initializeParams) {
         final InitializeResult response = new InitializeResult(new ServerCapabilities());
         //Set the document synchronization capabilities to full.
-        response.getCapabilities().setTextDocumentSync(TextDocumentSyncKind.Incremental);
+        response.getCapabilities().setTextDocumentSync(TextDocumentSyncKind.Full);
         this.initializationParams = initializeParams;
-        //response.getCapabilities().setHoverProvider(true);
+        response.getCapabilities().setHoverProvider(true);
+        //response.getCapabilities().
         this.clientCapabilities = initializeParams.getCapabilities();
 
         this.properties = getProperties();
@@ -91,7 +90,6 @@ public class PolyglotLanguageServer implements LanguageServer, LanguageClientAwa
     }
 
     public PolyglotLanguageServerProperties.LanguageServerInfo getLanguageInfo(String language){
-        System.err.println(this.properties.ls);
         for (PolyglotLanguageServerProperties.LanguageServerInfo l : this.properties.ls) {
             if(l.language.equals(language)) return l;
         }
@@ -116,8 +114,13 @@ public class PolyglotLanguageServer implements LanguageServer, LanguageClientAwa
 
     @Override
     public CompletableFuture<Object> shutdown() {
+        this.shutdownFuture = new CompletableFuture<Object>();
+        this.languageClientManager.shutdown().thenApply(v -> {
+            this.shutdownFuture.complete(new Object());
+            return v;
+        });
         shutdown = 0;
-        return CompletableFuture.supplyAsync(Object::new);
+        return this.shutdownFuture;
     }
 
     @Override

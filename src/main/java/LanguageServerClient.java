@@ -9,6 +9,7 @@ import java.io.*;
 import java.net.Socket;
 import java.util.ArrayList;
 import java.util.concurrent.CompletableFuture;
+import java.util.function.Function;
 
 public class LanguageServerClient extends Thread implements LanguageClient {
 
@@ -21,8 +22,9 @@ public class LanguageServerClient extends Thread implements LanguageClient {
     private boolean isInitialized = false;
     private RemoteEndpoint remoteEndpoint;
     private PolyglotLanguageServer polyglotLSref;
-
     private ArrayList<LSRequest> pendingInitializationRequests;
+    private LSClientLogger clientLogger;
+    CompletableFuture<Object> shutdownFuture;
 
     public LanguageServerClient(String language, String ip, int port, PolyglotLanguageServer polyglotLSref){
         this.language = language;
@@ -30,10 +32,11 @@ public class LanguageServerClient extends Thread implements LanguageClient {
         this.port = port;
         this.pendingInitializationRequests = new ArrayList<>();
         this.polyglotLSref = polyglotLSref;
+        this.clientLogger = LSClientLogger.getInstance();
     }
 
     public boolean connect(){
-        int connectionTry = 3;
+        int connectionTry = 10;
         while(connectionTry > 0){
             connectionTry--;
             try {
@@ -47,7 +50,7 @@ public class LanguageServerClient extends Thread implements LanguageClient {
                 return true;
             } catch (IOException e) {
                 try {
-                    Thread.sleep(400);
+                    Thread.sleep(500);
                 } catch (InterruptedException ex) {
                     return false;
                 }
@@ -64,12 +67,14 @@ public class LanguageServerClient extends Thread implements LanguageClient {
         return this.isInitialized;
     }
 
-    public void shutdown(){
-        try {
-            this.input.close();
-            this.output.close();
-            this.clientSocket.close();
-        } catch (IOException e) {}
+    public CompletableFuture<Object> shutdown(){
+        this.shutdownFuture = new CompletableFuture<>();
+        this.remoteEndpoint.request("shutdown", null).thenApply((v) -> {
+            this.remoteEndpoint.notify("exit", null);
+            this.shutdownFuture.complete(new Object());
+            return v;
+        });
+        return this.shutdownFuture;
     }
 
     private void initializeConnection(LanguageServer remoteProxy) {
@@ -84,13 +89,26 @@ public class LanguageServerClient extends Thread implements LanguageClient {
     private void initialized(){
         this.isInitialized = true;
         for (LSRequest pendingInitializationRequest : this.pendingInitializationRequests) {
-            CompletableFuture<Object> result = null;
-             switch (pendingInitializationRequest.id) {
+            Object result_f = pendingInitializationRequest.function.apply(pendingInitializationRequest.params);
+            if(result_f == null) return;
+            CompletableFuture<Object> result = (CompletableFuture<Object>) result_f;
+             /*switch (pendingInitializationRequest.id) {
                  case "didOpenRequest":
-                     result = didOpenRequest((DidOpenTextDocumentParams) pendingInitializationRequest.params);
+                     didOpenRequest((DidOpenTextDocumentParams) pendingInitializationRequest.params);
+                     break;
                  case "hoverRequest":
                      result = hoverRequest((HoverParams) pendingInitializationRequest.params);
-            };
+                     break;
+                 case "didChangeRequest":
+                     didChangeRequest((DidChangeTextDocumentParams) pendingInitializationRequest.params);
+                     break;
+                 case "didSaveRequest":
+                     didSaveRequest((DidSaveTextDocumentParams) pendingInitializationRequest.params);
+                     break;
+                 case "didRenameFiles":
+                     didRenameFiles((RenameFilesParams) pendingInitializationRequest.params);
+                     break;
+            };*/
             if(result != null){
                 result.thenApply((v) -> {
                     pendingInitializationRequest.response.complete(v);
@@ -100,23 +118,39 @@ public class LanguageServerClient extends Thread implements LanguageClient {
         }
     }
 
-    public synchronized CompletableFuture<Object> didOpenRequest(DidOpenTextDocumentParams params){
-        System.err.println("Request didOpen");
-        CompletableFuture<Object> future = this.checkRequestPreInitialization(params, "didOpenRequest");
-        if(future == null) return this.remoteEndpoint.request("textDocument/didOpen", params);
-        return future;
+    public void didOpenRequest(DidOpenTextDocumentParams params){
+        CompletableFuture<Object> future = this.checkRequestPreInitialization(params, "didOpenRequest", (param) -> {this.didOpenRequest((DidOpenTextDocumentParams) param);return null;});
+        if(future == null) {
+            this.clientLogger.logMessage("didOpenRequest to "+this.language+" language server at URI : "+params.getTextDocument().getUri());
+            this.remoteEndpoint.notify("textDocument/didOpen", params);
+        }
     }
 
-    public synchronized CompletableFuture<Object> hoverRequest(HoverParams params){
-        CompletableFuture<Object> future = this.checkRequestPreInitialization(params, "hoverRequest");
+    public void didChangeRequest(DidChangeTextDocumentParams params){
+        CompletableFuture<Object> future = this.checkRequestPreInitialization(params, "didChangeRequest", (param) -> {this.didChangeRequest((DidChangeTextDocumentParams) param);return null;});
+        if(future == null) this.remoteEndpoint.notify("textDocument/didChange", params);
+    }
+
+    public void didSaveRequest(DidSaveTextDocumentParams params){
+        CompletableFuture<Object> future = this.checkRequestPreInitialization(params, "didSaveRequest", (param) -> {this.didSaveRequest((DidSaveTextDocumentParams) param);return null;});
+        if(future == null) this.remoteEndpoint.notify("textDocument/didSave", params);
+    }
+
+    public void didRenameFiles(RenameFilesParams params){
+        CompletableFuture<Object> future = this.checkRequestPreInitialization(params, "didRenameFiles", (param) -> {this.didRenameFiles((RenameFilesParams) param);return null;});
+        if(future == null) this.remoteEndpoint.notify("workspace/didRenameFiles", params);
+    }
+
+    public CompletableFuture<Object> hoverRequest(HoverParams params){
+        CompletableFuture<Object> future = this.checkRequestPreInitialization(params, "hoverRequest", (param) -> {return this.hoverRequest((HoverParams) param);});
         if(future == null) return this.remoteEndpoint.request("textDocument/hover", params);
         return future;
     }
 
-    private CompletableFuture<Object> checkRequestPreInitialization(Object params, String requestId){
+    private CompletableFuture<Object> checkRequestPreInitialization(Object params, String requestId, Function function){
         if(!this.isInitialized){
             CompletableFuture<Object> future = new CompletableFuture<>();
-            this.pendingInitializationRequests.add(new LSRequest(requestId, params, future));
+            this.pendingInitializationRequests.add(new LSRequest(requestId, params, future, function));
             return future;
         }
         return null;
