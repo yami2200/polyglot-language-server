@@ -1,5 +1,6 @@
 import com.example.polyglotast.*;
 import com.example.polyglotast.utils.*;
+import kotlin.Pair;
 import org.eclipse.lsp4j.*;
 import org.eclipse.lsp4j.jsonrpc.messages.Either;
 import org.eclipse.lsp4j.services.TextDocumentService;
@@ -226,7 +227,36 @@ public class PolyglotTextDocumentService implements TextDocumentService {
 
     @Override
     public CompletableFuture<Hover> hover(HoverParams params) {
-        return CompletableFuture.supplyAsync(() -> {
+        try{
+            PolyglotTreeHandler tree = PolyglotTreeHandler.getfilePathToTreeHandler().get(Paths.get(new URI(params.getTextDocument().getUri())));
+            PolyglotZipper zipper = new PolyglotZipper(tree, tree.getNodeAtPosition(new Pair<>(params.getPosition().getLine(), params.getPosition().getCharacter())));
+            if(zipper.node != null && zipper.getType().equals("identifier")){
+                for (PolyglotTreeHandler hostTree : tree.getHostTrees()) {
+                    PolyglotTypeVisitor typeVisitor = new PolyglotTypeVisitor(zipper);
+                    hostTree.apply(typeVisitor);
+                    PolyglotTypeVisitor.TypingResult result = typeVisitor.getTypeResult();
+                    if(result.typeResult.equals(PolyglotTypeVisitor.TypeResultEnum.VALUETYPE)){
+                        return CompletableFuture.supplyAsync(() -> {
+                            Hover hov = new Hover();
+                            String text = "(Polyglot) *"+zipper.getCode()+"* : **"+result.type+"**";
+                            hov.setContents(new MarkupContent(MarkupKind.MARKDOWN, text));
+                            Range r = new Range();
+                            r.setStart(new Position(zipper.getPosition().component1(), zipper.getPosition().component2()));
+                            r.setEnd(new Position(zipper.getPosition().component1(), zipper.getPosition().component2() + zipper.getCode().length()));
+                            hov.setRange(r);
+                            return hov;
+                        });
+                    } else if (result.typeResult.equals(PolyglotTypeVisitor.TypeResultEnum.EXPORTTYPE)){
+                        //
+                        //
+                    }
+                }
+            }
+        } catch (URISyntaxException e) {
+            System.err.println(e);
+        }
+        return CompletableFuture.supplyAsync(() -> new Hover());
+        /*return CompletableFuture.supplyAsync(() -> {
             Hover hov = new Hover();
             hov.setContents(new MarkupContent(MarkupKind.MARKDOWN, "# Header\nSome text\n"));
             Range r = new Range();
@@ -234,7 +264,7 @@ public class PolyglotTextDocumentService implements TextDocumentService {
             r.setEnd(new Position(2, 10));
             hov.setRange(r);
             return hov;
-        });
+        });*/
     }
 
     public void checkCompletion(CompletionParams position, ArrayList<CompletionItem> listCompletions) throws URISyntaxException {
@@ -287,89 +317,6 @@ public class PolyglotTextDocumentService implements TextDocumentService {
         this.clientLogger.logMessage("Operation '" + "text/Diagnostic" + "' {title: '" + params.getTextDocument().getUri() + "'} Diagnostic");
         return TextDocumentService.super.diagnostic(params);
     }
-
-
-
-
-    /*@Override
-    public CompletableFuture<Hover> hover(HoverParams params) {
-        return null;
-        /*return CompletableFuture.supplyAsync(() -> {
-            Hover hov = new Hover();
-            hov.setContents(new MarkupContent(MarkupKind.MARKDOWN, "# Header\nSome text\n"));
-            Range r = new Range();
-            r.setStart(params.getPosition());
-            r.setEnd(new Position(2, 10));
-            hov.setRange(r);
-            System.err.println(hov);*/
-            //return new Hover(Collections.emptyList(), null);
-        /*    return null;
-        });*/
-
-        /*CompletableFuture<Hover> future = new CompletableFuture<>();
-        Hover hov = new Hover();
-        MarkupContent c = new MarkupContent();
-        c.setValue("test value");
-        c.setKind("plaintext");
-        hov.setContents(c);
-        Range r = new Range();
-        r.setStart(params.getPosition());
-        r.setEnd(new Position(2, 10));
-        hov.setRange(r);
-        future.complete(hov);
-        return future;*/
-        /*return CompletableFutures.computeAsync(new Executor() {
-            @Override
-            public void execute(@NotNull Runnable command) {
-                command.run();
-            }
-        }, cancelToken -> {
-            cancelToken.checkCanceled();
-            Hover hov = new Hover();
-            MarkupContent c = new MarkupContent();
-            c.setValue("test value");
-            c.setKind("markdown");
-            hov.setContents(c);
-            Range r = new Range();
-            r.setStart(params.getPosition());
-            r.setEnd(new Position(1, 10));
-            hov.setRange(r);
-            return hov;
-        });*/
-
-        /*System.err.println(params.getPosition());
-        Hover hov = new Hover();
-        MarkupContent c = new MarkupContent();
-        c.setValue("test value");
-        c.setKind("markdown");
-        hov.setContents(c);
-        Range r = new Range();
-        r.setStart(params.getPosition());
-        r.setEnd(new Position(1, 10));
-        hov.setRange(r);
-        System.err.println("Should Be Completed");
-        return CompletableFuture.completedFuture(hov);*/
-        /*return CompletableFutures.computeAsync(new Function<CancelChecker, Hover>() {
-            @Override
-            public Hover apply(CancelChecker cancelChecker) {
-                Hover hov = new Hover();
-                MarkupContent c = new MarkupContent();
-                c.setValue("test value");
-                c.setKind("test");
-                hov.setContents(c);
-                Range r = new Range();
-                cancelChecker.checkCanceled();
-                r.setStart(new Position(1, 1));
-                r.setEnd(new Position(1, 10));
-                hov.setRange(r);
-                System.err.println("Should Be Completed");
-                return hov;
-            }
-        });*/
-        /*return CompletableFutures.computeAsync((cancelToken, hov) -> {
-            //
-        });*/
-    //}
 
     private String getLanguageFromExtension(String extension){
         switch (extension){
@@ -492,22 +439,5 @@ public class PolyglotTextDocumentService implements TextDocumentService {
         diagnostic.setSeverity(severity);
         this.diagHandler.addDiagnostic(path.toUri().toString(), diagnostic, DiagnosticCategory.IMPORTEXPORT, diagOwner);
     }
-
-    /*@Override
-    public CompletableFuture<Hover> hover(HoverParams params) {
-        System.err.println("Trigger Hover");
-        return CompletableFuture.supplyAsync(() -> {
-            Hover hov = new Hover();
-            MarkupContent c = new MarkupContent();
-            c.setValue("test value");
-            c.setKind("test");
-            hov.setContents(c);
-            Range r = new Range();
-            r.setStart(new Position(1,1));
-            r.setEnd(new Position(1,10));
-            hov.setRange(r);
-            return hov;
-        });
-    }*/
 
 }

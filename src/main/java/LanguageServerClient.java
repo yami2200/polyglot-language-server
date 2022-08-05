@@ -92,23 +92,6 @@ public class LanguageServerClient extends Thread implements LanguageClient {
             Object result_f = pendingInitializationRequest.function.apply(pendingInitializationRequest.params);
             if(result_f == null) return;
             CompletableFuture<Object> result = (CompletableFuture<Object>) result_f;
-             /*switch (pendingInitializationRequest.id) {
-                 case "didOpenRequest":
-                     didOpenRequest((DidOpenTextDocumentParams) pendingInitializationRequest.params);
-                     break;
-                 case "hoverRequest":
-                     result = hoverRequest((HoverParams) pendingInitializationRequest.params);
-                     break;
-                 case "didChangeRequest":
-                     didChangeRequest((DidChangeTextDocumentParams) pendingInitializationRequest.params);
-                     break;
-                 case "didSaveRequest":
-                     didSaveRequest((DidSaveTextDocumentParams) pendingInitializationRequest.params);
-                     break;
-                 case "didRenameFiles":
-                     didRenameFiles((RenameFilesParams) pendingInitializationRequest.params);
-                     break;
-            };*/
             if(result != null){
                 result.thenApply((v) -> {
                     pendingInitializationRequest.response.complete(v);
