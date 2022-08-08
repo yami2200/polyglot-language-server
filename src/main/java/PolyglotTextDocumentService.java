@@ -142,6 +142,12 @@ public class PolyglotTextDocumentService implements TextDocumentService {
         }
     }
 
+    /**
+     * Update AST of specific file with the new code, and update all diagnostics related to the edition
+     * @param uri uri of file changed
+     * @param newCode new code of the file
+     * @throws URISyntaxException
+     */
     public void changeTree(String uri, String newCode) throws URISyntaxException {
         Path path = Paths.get(new URI(uri));
         if(!PolyglotTreeHandler.getfilePathToTreeHandler().containsKey(path)) return;
@@ -164,19 +170,28 @@ public class PolyglotTextDocumentService implements TextDocumentService {
         }
     }
 
+    /**
+     * Parse a new Polyglot AST from uri, parse all files in directory and process all diagnostics for all these files
+     * @param uri Uri of the file to parse
+     * @throws URISyntaxException
+     * @throws IOException
+     */
     public void createTree(String uri) throws URISyntaxException, IOException {
+        // Check if the file has not been parsed before
         Path path = Paths.get(new URI(uri));
         if(PolyglotTreeHandler.getfilePathToTreeHandler().containsKey(path)) return;
+        // Get language of file
         String[] splitURI = uri.split("[.]", 0);
         String language = getLanguageFromExtension(splitURI[splitURI.length-1]);
         if(language.equals("none")) return;
+        // Parse the file into a Polyglot AST
         PolyglotTreeHandler newTree = new PolyglotTreeHandler(path, language);
 
         this.createTreesFromDirectory(path.getParent().toString());
 
         HashSet<PolyglotTreeHandler> hostTrees = newTree.getHostTrees();
 
-        // CHECK ERROR NOT FOUND ERRORS
+        // CHECK "ERROR NOT FOUND" ERRORS
         HashSet<Path> paths = new HashSet<>();
         for (PolyglotTreeHandler hostTree : hostTrees) {
             if(PolyglotTreeHandler.getfilePathOfTreeHandler().containsKey(hostTree)) paths.add(PolyglotTreeHandler.getfilePathOfTreeHandler().get(hostTree));
@@ -198,16 +213,25 @@ public class PolyglotTextDocumentService implements TextDocumentService {
         }
     }
 
+    /**
+     * Parse all Files into Polyglot ASTs from the same directory of the file passed in parameter
+     * @param filePath file directory to look in
+     * @throws IOException
+     */
     public void createTreesFromDirectory(String filePath) throws IOException {
         File dir = new File(filePath);
         if (dir.exists() && dir.isDirectory()) {
+            // Get all files of directory
             File files[] = dir.listFiles();
             for (File file : files) {
+                // Check if the path has not been already parsed
                 Path path = Paths.get(file.getAbsolutePath());
                 if(!PolyglotTreeHandler.getfilePathToTreeHandler().containsKey(path)){
+                    // Check if it's a correct file extension handled by the server
                     String[] splitURI = path.toString().split("[.]", 0);
                     String language = getLanguageFromExtension(splitURI[splitURI.length-1]);
                     if(!language.equals("none")){
+                        // Parse the file into a PolyglotTree and sendOpen request to the proper Language Server
                         PolyglotTreeHandler newTree = new PolyglotTreeHandler(path, language);
                         this.sendDidOpenRequestToLanguageServers(path);
                         for (PolyglotTreeHandler subTree : newTree.getSubTrees()) {
@@ -220,6 +244,11 @@ public class PolyglotTextDocumentService implements TextDocumentService {
         }
     }
 
+    /**
+     * Send didOpen Request to specific Language Server of File Language Programming
+     * @param path file opened
+     * @throws IOException
+     */
     public void sendDidOpenRequestToLanguageServers(Path path) throws IOException {
         if(this.externLSOpenedPahts.contains(path)) return;
         DidOpenTextDocumentParams params = new DidOpenTextDocumentParams();
@@ -237,9 +266,14 @@ public class PolyglotTextDocumentService implements TextDocumentService {
      * ################################################# DIAGNOSTICS ###################################################
      */
 
+    /**
+     * Add diagnostics to diagnostic Handler for each file not found of files in paths
+     * @param paths set of file paths to look in
+     */
     public void checkFileNotFound(HashSet<Path> paths){
         HashMap<Path, HashSet<FileNotFoundInfo>> filesNotFound = new HashMap<>();
 
+        // Put all files not found from all trees at specific path in the map
         for(Path path : paths){
             this.diagHandler.clearDiagnostics(path.toUri().toString(), DiagnosticCategory.FILENOTFOUND, path);
             if(PolyglotTreeHandler.getfilePathToTreeHandler().containsKey(path)){
@@ -256,6 +290,7 @@ public class PolyglotTextDocumentService implements TextDocumentService {
             }
         }
 
+        // Create diagnostic for each element in map
         for(Path path : filesNotFound.keySet()){
             for(FileNotFoundInfo file : filesNotFound.get(path)){
                 Diagnostic diagnostic = new Diagnostic();
@@ -268,20 +303,30 @@ public class PolyglotTextDocumentService implements TextDocumentService {
         }
     }
 
+    /**
+     * Check Inconsistencies/Warning in all trees passed in parameter
+     * @param trees AST to check
+     * @return all paths checked in
+     */
     public HashSet<Path> checkInconsistencies(HashSet<PolyglotTreeHandler> trees){
         HashSet<Path> pathsCovered = new HashSet<>();
         HashSet<String> diagnosticsID = new HashSet<>();
+        // Loop through all trees and process all inconsistencies with DUBuilder
         for (PolyglotTreeHandler tree : trees) {
             PolyglotDUBuilder du = new PolyglotDUBuilder();
             tree.apply(du);
 
+            // Loop through all trees processed by DUBuilder to clear their diagnostics
             for (Path path : du.getPathsCovered()) {
                 this.diagHandler.clearDiagnostics(path.toUri().toString(), DiagnosticCategory.IMPORTEXPORT, PolyglotTreeHandler.getfilePathOfTreeHandler().get(tree));
+                // Add the path to pathsCovered if it wasn't in it previously
                 if(!pathsCovered.contains(path)){
                     pathsCovered.add(path);
                     this.diagHandler.clearDiagnostics(path.toUri().toString(), DiagnosticCategory.IMPORTEXPORT, path);
                 }
             }
+
+            // Information : Export without import
             for (String s : du.getExportWithoutImport().keySet()) {
                 for (ExportData exportData : du.getExportWithoutImport().get(s)) {
                     if(!diagnosticsID.contains(exportData.getId())){
@@ -294,6 +339,7 @@ public class PolyglotTextDocumentService implements TextDocumentService {
                 }
             }
 
+            // Warning : Import before the export
             for (String s : du.getImportBeforeExport().keySet()) {
                 for (ImportData importData : du.getImportBeforeExport().get(s)) {
                     this.addImportExportDiagnostic("Variable \""+ importData.getVar_name()+"\" is imported before the export statement. (With Host : "+PolyglotTreeHandler.getfilePathOfTreeHandler().get(tree).getFileName().toString()+")",
@@ -303,6 +349,7 @@ public class PolyglotTextDocumentService implements TextDocumentService {
                 }
             }
 
+            // Warning : Import without an export
             for (String s : du.getImportWithoutExport().keySet()) {
                 for (ImportData importData : du.getImportWithoutExport().get(s)) {
                     this.addImportExportDiagnostic("Variable \""+ importData.getVar_name()+"\" is imported but is never exported. (With Host : "+PolyglotTreeHandler.getfilePathOfTreeHandler().get(tree).getFileName().toString()+")",
@@ -312,6 +359,7 @@ public class PolyglotTextDocumentService implements TextDocumentService {
                 }
             }
 
+            // Information : Import & Export from the same file
             for (String s : du.getImportFromSameFile().keySet()) {
                 for (ImportData importData : du.getImportFromSameFile().get(s)) {
                     if(!diagnosticsID.contains(importData.getId())) {
@@ -324,6 +372,7 @@ public class PolyglotTextDocumentService implements TextDocumentService {
                 }
             }
 
+            // Error : Evaluate the file A into the file A (could cause infinite loop evaluation and so on)
             for (CodeArea codeArea : du.getEvalSameFile()) {
                 if(!diagnosticsID.contains("evalSameFile"+codeArea.id)) {
                     diagnosticsID.add("evalSameFile"+codeArea.id);
@@ -334,11 +383,19 @@ public class PolyglotTextDocumentService implements TextDocumentService {
                 }
             }
 
-
         }
         return pathsCovered;
     }
 
+    /**
+     * Add Diagnostic in Diagnostic Handler
+     * @param message Message of the diagnostic
+     * @param source Source of the diagnostic
+     * @param severity Severity of the diagnostic (Warning, Info, Error ...)
+     * @param path Path of file where is the diagnostic belongs to
+     * @param range Range of underline effect
+     * @param diagOwner Diagnostic Owner path file (Useful for Multihost diagnostics)
+     */
     private void addImportExportDiagnostic(String message, String source, DiagnosticSeverity severity, Path path, Range range, Path diagOwner){
         Diagnostic diagnostic = new Diagnostic();
         diagnostic.setMessage(message);
@@ -373,27 +430,31 @@ public class PolyglotTextDocumentService implements TextDocumentService {
     }
 
     /**
-     *
-     * @param position
-     * @param listCompletions
+     * Fill the list passed in parameters, with completions items of un-imported polyglot variables
+     * @param completionParams CompletionParams
+     * @param listCompletions the list to fill with completion items
      * @throws URISyntaxException
      */
-    public void checkCompletion(CompletionParams position, ArrayList<CompletionItem> listCompletions) throws URISyntaxException {
-        // Check Import Variable
-        if(position.getPosition().getCharacter() == 0){
-            PolyglotTreeHandler currentTree = PolyglotTreeHandler.getfilePathToTreeHandler().get(Paths.get(new URI(position.getTextDocument().getUri())));
+    public void checkCompletion(CompletionParams completionParams, ArrayList<CompletionItem> listCompletions) throws URISyntaxException {
+        // PROTOTYPE : only works when beginning a new line
+        if(completionParams.getPosition().getCharacter() == 0){
+            // Get the tree of current file & spot all variables export/import
+            PolyglotTreeHandler currentTree = PolyglotTreeHandler.getfilePathToTreeHandler().get(Paths.get(new URI(completionParams.getTextDocument().getUri())));
             if(currentTree == null) return;
             PolyglotVariableSpotter varSpotter = new PolyglotVariableSpotter();
             for (PolyglotTreeHandler hostTree : currentTree.getHostTrees()) {
                 hostTree.apply(varSpotter);
             }
+            // Create a set of all polyglot variables not imported in the current file
             Set<String> listVarNotImported = new HashSet<String>(varSpotter.getExports().keySet());
             for (String var : varSpotter.getExports().keySet()) {
                 if((varSpotter.getImports().containsKey(var) && varSpotter.getImports().get(var).containsKey(currentTree) && varSpotter.getImports().get(var).get(currentTree).size() > 0) || varSpotter.getExports().get(var).containsKey(currentTree)) listVarNotImported.remove(var);
             }
+            // Create one completion item for each
             for (String var : listVarNotImported) {
                 CompletionItem completionItem = new CompletionItem();
                 completionItem.setLabel(var);
+                // Set insertText depending of the file programming language
                 switch (currentTree.getLang()){
                     case "python":
                         completionItem.setInsertText(var+" = polyglot.import_value(name=\""+var+"\")\r\n");
@@ -403,7 +464,7 @@ public class PolyglotTextDocumentService implements TextDocumentService {
                         completionItem.setInsertText("let "+var+" = Polyglot.import(\""+var+"\");\r\n");
                         break;
                 }
-
+                // Set details of completion item
                 completionItem.setDetail("Polyglot Import "+var);
                 completionItem.setKind(CompletionItemKind.Variable);
                 listCompletions.add(completionItem);
@@ -482,7 +543,7 @@ public class PolyglotTextDocumentService implements TextDocumentService {
      */
     public Hover getHoverObject(PolyglotZipper nodeHovered, String type, PolyglotTreeHandler hostTree, int numberHostTrees){
         Hover hov = new Hover();
-        String text = "```typescript\nPolyglot "+nodeHovered.getCode()+" : "+type+"\n```"+(numberHostTrees>1 ? "(With Host : "+PolyglotTreeHandler.getfilePathOfTreeHandler().get(hostTree).getFileName()+") + "+(numberHostTrees-1)+" more host(s)..." : "");
+        String text = "```typescript\nPolyglot "+nodeHovered.getCode()+" : "+type+"\n```\n"+(numberHostTrees>1 ? "(With Host : "+PolyglotTreeHandler.getfilePathOfTreeHandler().get(hostTree).getFileName()+") + "+(numberHostTrees-1)+" more host(s)..." : "");
         hov.setContents(new MarkupContent(MarkupKind.MARKDOWN, text));
         setHoverRange(nodeHovered, hov);
         return hov;
