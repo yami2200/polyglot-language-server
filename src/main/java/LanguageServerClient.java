@@ -111,7 +111,10 @@ public class LanguageServerClient extends Thread implements LanguageClient {
 
     public void didChangeRequest(DidChangeTextDocumentParams params){
         CompletableFuture<Object> future = this.checkRequestPreInitialization(params, "didChangeRequest", (param) -> {this.didChangeRequest((DidChangeTextDocumentParams) param);return null;});
-        if(future == null) this.remoteEndpoint.notify("textDocument/didChange", params);
+        if(future == null){
+            this.clientLogger.logMessage("change request to LS "+this.language);
+            this.remoteEndpoint.notify("textDocument/didChange", params);
+        }
     }
 
     public void didSaveRequest(DidSaveTextDocumentParams params){
@@ -126,7 +129,10 @@ public class LanguageServerClient extends Thread implements LanguageClient {
 
     public CompletableFuture<Object> hoverRequest(HoverParams params){
         CompletableFuture<Object> future = this.checkRequestPreInitialization(params, "hoverRequest", (param) -> {return this.hoverRequest((HoverParams) param);});
-        if(future == null) return this.remoteEndpoint.request("textDocument/hover", params);
+        if(future == null) {
+            this.clientLogger.logMessage("Request from LS "+this.language);
+            return this.remoteEndpoint.request("textDocument/hover", params);
+        }
         return future;
     }
 

@@ -14,13 +14,15 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 public class PolyglotTextDocumentService implements TextDocumentService {
 
-    private PolyglotLanguageServer languageServer;
-    private LSClientLogger clientLogger;
-    private PolyglotDiagnosticsHandler diagHandler;
-    private HashSet<Path> externLSOpenedPahts;
+    private PolyglotLanguageServer languageServer; // Reference to the language Server
+    private LSClientLogger clientLogger; // Reference to the instance of clientLogger
+    private PolyglotDiagnosticsHandler diagHandler; // Reference to diagnostic Handler
+    private HashSet<Path> externLSOpenedPahts; // Set of all paths that have been opened in extern Language Server (Used to avoid duplicated open request)
 
 
 
@@ -31,6 +33,14 @@ public class PolyglotTextDocumentService implements TextDocumentService {
         this.externLSOpenedPahts = new HashSet<>();
     }
 
+    /**
+     * ################################## FILE SYNCHRONIZATION & AST PARSING ###########################################
+     */
+
+    /**
+     * LSP didOpen Request Handler
+     * @param didOpenTextDocumentParams
+     */
     @Override
     public void didOpen(DidOpenTextDocumentParams didOpenTextDocumentParams) {
         this.clientLogger.logMessage("Operation '" + "text/didOpen" + "' {fileUri: '" + didOpenTextDocumentParams.getTextDocument().getUri() + "'} opened");
@@ -56,6 +66,10 @@ public class PolyglotTextDocumentService implements TextDocumentService {
         }
     }
 
+    /**
+     * LSP didChange Request Handler
+     * @param didChangeTextDocumentParams
+     */
     @Override
     public void didChange(DidChangeTextDocumentParams didChangeTextDocumentParams) {
         this.clientLogger.logMessage("Operation '" + "text/didChange" + "' {fileUri: '" + didChangeTextDocumentParams.getTextDocument().getUri() + "'} Changed");
@@ -87,11 +101,19 @@ public class PolyglotTextDocumentService implements TextDocumentService {
 
     }
 
+    /**
+     * LSP didClose Request Handler
+     * @param didCloseTextDocumentParams
+     */
     @Override
     public void didClose(DidCloseTextDocumentParams didCloseTextDocumentParams) {
         this.clientLogger.logMessage("Operation '" + "text/didClose" + "' {fileUri: '" + didCloseTextDocumentParams.getTextDocument().getUri() + "'} Closed");
     }
 
+    /**
+     * LSP didSave Request Handler
+     * @param didSaveTextDocumentParams
+     */
     @Override
     public void didSave(DidSaveTextDocumentParams didSaveTextDocumentParams) {
         this.clientLogger.logMessage("Operation '" + "text/didSave" + "' {fileUri: '" + didSaveTextDocumentParams.getTextDocument().getUri() + "'} Saved");
@@ -211,123 +233,9 @@ public class PolyglotTextDocumentService implements TextDocumentService {
         this.languageServer.languageClientManager.didOpenRequest(params);
     }
 
-    @Override
-    public CompletableFuture<Either<List<CompletionItem>, CompletionList>> completion(CompletionParams position) {
-        return CompletableFuture.supplyAsync(() -> {
-            this.clientLogger.logMessage("Operation '" + "text/completion");
-            ArrayList<CompletionItem> listItems = new ArrayList<>();
-            try {
-                this.checkCompletion(position, listItems);
-            } catch (URISyntaxException e) {
-                throw new RuntimeException(e);
-            }
-            return Either.forLeft(listItems);
-        });
-    }
-
-    @Override
-    public CompletableFuture<Hover> hover(HoverParams params) {
-        try{
-            PolyglotTreeHandler tree = PolyglotTreeHandler.getfilePathToTreeHandler().get(Paths.get(new URI(params.getTextDocument().getUri())));
-            PolyglotZipper zipper = new PolyglotZipper(tree, tree.getNodeAtPosition(new Pair<>(params.getPosition().getLine(), params.getPosition().getCharacter())));
-            if(zipper.node != null && zipper.getType().equals("identifier")){
-                for (PolyglotTreeHandler hostTree : tree.getHostTrees()) {
-                    PolyglotTypeVisitor typeVisitor = new PolyglotTypeVisitor(zipper);
-                    hostTree.apply(typeVisitor);
-                    PolyglotTypeVisitor.TypingResult result = typeVisitor.getTypeResult();
-                    if(result.typeResult.equals(PolyglotTypeVisitor.TypeResultEnum.VALUETYPE)){
-                        return CompletableFuture.supplyAsync(() -> {
-                            Hover hov = new Hover();
-                            String text = "(Polyglot) *"+zipper.getCode()+"* : **"+result.type+"**";
-                            hov.setContents(new MarkupContent(MarkupKind.MARKDOWN, text));
-                            Range r = new Range();
-                            r.setStart(new Position(zipper.getPosition().component1(), zipper.getPosition().component2()));
-                            r.setEnd(new Position(zipper.getPosition().component1(), zipper.getPosition().component2() + zipper.getCode().length()));
-                            hov.setRange(r);
-                            return hov;
-                        });
-                    } else if (result.typeResult.equals(PolyglotTypeVisitor.TypeResultEnum.EXPORTTYPE)){
-                        //
-                        //
-                    }
-                }
-            }
-        } catch (URISyntaxException e) {
-            System.err.println(e);
-        }
-        return CompletableFuture.supplyAsync(() -> new Hover());
-        /*return CompletableFuture.supplyAsync(() -> {
-            Hover hov = new Hover();
-            hov.setContents(new MarkupContent(MarkupKind.MARKDOWN, "# Header\nSome text\n"));
-            Range r = new Range();
-            r.setStart(params.getPosition());
-            r.setEnd(new Position(2, 10));
-            hov.setRange(r);
-            return hov;
-        });*/
-    }
-
-    public void checkCompletion(CompletionParams position, ArrayList<CompletionItem> listCompletions) throws URISyntaxException {
-        // Check Import Variable
-        if(position.getPosition().getCharacter() == 0){
-            PolyglotTreeHandler currentTree = PolyglotTreeHandler.getfilePathToTreeHandler().get(Paths.get(new URI(position.getTextDocument().getUri())));
-            if(currentTree == null) return;
-            PolyglotVariableSpotter varSpotter = new PolyglotVariableSpotter();
-            for (PolyglotTreeHandler hostTree : currentTree.getHostTrees()) {
-                hostTree.apply(varSpotter);
-            }
-            Set<String> listVarNotImported = new HashSet<String>(varSpotter.getExports().keySet());
-            for (String var : varSpotter.getExports().keySet()) {
-                if((varSpotter.getImports().containsKey(var) && varSpotter.getImports().get(var).containsKey(currentTree) && varSpotter.getImports().get(var).get(currentTree).size() > 0) || varSpotter.getExports().get(var).containsKey(currentTree)) listVarNotImported.remove(var);
-            }
-            for (String var : listVarNotImported) {
-                CompletionItem completionItem = new CompletionItem();
-                completionItem.setLabel(var);
-                switch (currentTree.getLang()){
-                    case "python":
-                        completionItem.setInsertText(var+" = polyglot.import_value(name=\""+var+"\")\r\n");
-                        break;
-                    case "js":
-                    case "javascript":
-                        completionItem.setInsertText("let "+var+" = Polyglot.import(\""+var+"\");\r\n");
-                        break;
-                }
-
-                completionItem.setDetail("Polyglot Import "+var);
-                completionItem.setKind(CompletionItemKind.Variable);
-                listCompletions.add(completionItem);
-            }
-        }
-    }
-
-    @Override
-    public CompletableFuture<List<Either<Command, CodeAction>>> codeAction(CodeActionParams params) {
-        this.clientLogger.logMessage("Operation '" + "text/codeAction" + "' {fileUri: '" + params.getTextDocument().getUri() + "'} Code Action");
-        return TextDocumentService.super.codeAction(params);
-    }
-
-    @Override
-    public CompletableFuture<CodeAction> resolveCodeAction(CodeAction unresolved) {
-        this.clientLogger.logMessage("Operation '" + "text/resolveCodeAction" + "' {title: '" + unresolved.getTitle() + "'} Resolve Code Action");
-        return TextDocumentService.super.resolveCodeAction(unresolved);
-    }
-
-    @Override
-    public CompletableFuture<DocumentDiagnosticReport> diagnostic(DocumentDiagnosticParams params) {
-        this.clientLogger.logMessage("Operation '" + "text/Diagnostic" + "' {title: '" + params.getTextDocument().getUri() + "'} Diagnostic");
-        return TextDocumentService.super.diagnostic(params);
-    }
-
-    private String getLanguageFromExtension(String extension){
-        switch (extension){
-            case "js":
-                return "javascript";
-            case "py":
-                return "python";
-            default:
-                return "none";
-        }
-    }
+    /**
+     * ################################################# DIAGNOSTICS ###################################################
+     */
 
     public void checkFileNotFound(HashSet<Path> paths){
         HashMap<Path, HashSet<FileNotFoundInfo>> filesNotFound = new HashMap<>();
@@ -438,6 +346,231 @@ public class PolyglotTextDocumentService implements TextDocumentService {
         diagnostic.setRange(range);
         diagnostic.setSeverity(severity);
         this.diagHandler.addDiagnostic(path.toUri().toString(), diagnostic, DiagnosticCategory.IMPORTEXPORT, diagOwner);
+    }
+
+
+    /**
+     * ################################################# COMPLETION ####################################################
+     */
+
+    /**
+     * LSP completion Request Handler
+     * @param completionParams CompletionParams
+     * @return completion list items
+     */
+    @Override
+    public CompletableFuture<Either<List<CompletionItem>, CompletionList>> completion(CompletionParams completionParams) {
+        return CompletableFuture.supplyAsync(() -> {
+            this.clientLogger.logMessage("Operation '" + "text/completion");
+            ArrayList<CompletionItem> listItems = new ArrayList<>();
+            try {
+                this.checkCompletion(completionParams, listItems);
+            } catch (URISyntaxException e) {
+                throw new RuntimeException(e);
+            }
+            return Either.forLeft(listItems);
+        });
+    }
+
+    /**
+     *
+     * @param position
+     * @param listCompletions
+     * @throws URISyntaxException
+     */
+    public void checkCompletion(CompletionParams position, ArrayList<CompletionItem> listCompletions) throws URISyntaxException {
+        // Check Import Variable
+        if(position.getPosition().getCharacter() == 0){
+            PolyglotTreeHandler currentTree = PolyglotTreeHandler.getfilePathToTreeHandler().get(Paths.get(new URI(position.getTextDocument().getUri())));
+            if(currentTree == null) return;
+            PolyglotVariableSpotter varSpotter = new PolyglotVariableSpotter();
+            for (PolyglotTreeHandler hostTree : currentTree.getHostTrees()) {
+                hostTree.apply(varSpotter);
+            }
+            Set<String> listVarNotImported = new HashSet<String>(varSpotter.getExports().keySet());
+            for (String var : varSpotter.getExports().keySet()) {
+                if((varSpotter.getImports().containsKey(var) && varSpotter.getImports().get(var).containsKey(currentTree) && varSpotter.getImports().get(var).get(currentTree).size() > 0) || varSpotter.getExports().get(var).containsKey(currentTree)) listVarNotImported.remove(var);
+            }
+            for (String var : listVarNotImported) {
+                CompletionItem completionItem = new CompletionItem();
+                completionItem.setLabel(var);
+                switch (currentTree.getLang()){
+                    case "python":
+                        completionItem.setInsertText(var+" = polyglot.import_value(name=\""+var+"\")\r\n");
+                        break;
+                    case "js":
+                    case "javascript":
+                        completionItem.setInsertText("let "+var+" = Polyglot.import(\""+var+"\");\r\n");
+                        break;
+                }
+
+                completionItem.setDetail("Polyglot Import "+var);
+                completionItem.setKind(CompletionItemKind.Variable);
+                listCompletions.add(completionItem);
+            }
+        }
+    }
+
+    /**
+     * ################################################# HOVER #########################################################
+     */
+
+    /**
+     * LSP hover Request Handler
+     * @param params HoverParams
+     * @return hover text
+     */
+    @Override
+    public CompletableFuture<Hover> hover(HoverParams params) {
+        try{
+            // Get tree, get the tree node which is hovered, and verify if it's an identifier
+            PolyglotTreeHandler tree = PolyglotTreeHandler.getfilePathToTreeHandler().get(Paths.get(new URI(params.getTextDocument().getUri())));
+            PolyglotZipper zipper = new PolyglotZipper(tree, tree.getNodeAtPosition(new Pair<>(params.getPosition().getLine(), params.getPosition().getCharacter())));
+            if(zipper.node != null && zipper.getType().equals("identifier")){
+                // Loop through HostTrees to make typing visit, TODO : Handle multiple results from all Host for typing feature
+                HashSet<PolyglotTreeHandler> hostTrees = tree.getHostTrees();
+                for (PolyglotTreeHandler hostTree : hostTrees) {
+                    // Make analysis for typing
+                    PolyglotTypeVisitor typeVisitor = new PolyglotTypeVisitor(zipper);
+                    hostTree.apply(typeVisitor);
+                    PolyglotTypeVisitor.TypingResult result = typeVisitor.getTypeResult();
+                    // The variable was exported directly with a raw value
+                    if(result.typeResult.equals(PolyglotTypeVisitor.TypeResultEnum.VALUETYPE)){
+                        return CompletableFuture.supplyAsync(() -> {
+                            return getHoverObject(zipper, result.type, hostTree, hostTrees.size());
+                        });
+                        // The variable was exported with a variable
+                    } else if (result.typeResult.equals(PolyglotTypeVisitor.TypeResultEnum.EXPORTTYPE)){
+                        // Make a hover request to Language Server to get the type of the variable which was used for the export
+                        HoverParams newParams = new HoverParams();
+                        newParams.setTextDocument(new TextDocumentIdentifier(result.fileExportPath.toUri().toString()));
+                        newParams.setPosition(new Position(result.hoverLocation.component1(), result.hoverLocation.component2()));
+                        return this.languageServer.languageClientManager.hoverRequest(newParams).thenApply((h) -> {
+                            // Process the result to try to format it
+                            Pair<String, Integer> hoverInfo = getLanguageServerHoverRegex(result.fileExportPath);
+                            Hover hov = new Hover();
+                            if(hoverInfo != null){
+                                // Use regex to get the type from the hover result
+                                Pattern p = Pattern.compile(hoverInfo.component1());
+                                String text = h.getContents().toString();
+                                Matcher m = p.matcher(text);
+                                if(m.find()){
+                                    return getHoverObject(zipper, m.group(hoverInfo.component2()), hostTree, hostTrees.size());
+                                }
+                            }
+                            // Regex didn't worked, just return the hover result from the language server
+                            hov.setContents(h.getContents());
+                            setHoverRange(zipper, hov);
+                            return hov;
+                        });
+                    }
+                }
+            }
+        } catch (Exception e) {
+            System.err.println(e);
+        }
+        return CompletableFuture.supplyAsync(() -> {return new Hover(new MarkupContent(MarkupKind.PLAINTEXT, ""));});
+    }
+
+    /**
+     * Return Hover object
+     * @param nodeHovered Polyglot node that is hovered
+     * @param type Type of variable hovered
+     * @param hostTree The current hostTree of this analysis
+     * @param numberHostTrees The number of hostTrees possible
+     * @return Hover object
+     */
+    public Hover getHoverObject(PolyglotZipper nodeHovered, String type, PolyglotTreeHandler hostTree, int numberHostTrees){
+        Hover hov = new Hover();
+        String text = "```typescript\nPolyglot "+nodeHovered.getCode()+" : "+type+"\n```"+(numberHostTrees>1 ? "(With Host : "+PolyglotTreeHandler.getfilePathOfTreeHandler().get(hostTree).getFileName()+") + "+(numberHostTrees-1)+" more host(s)..." : "");
+        hov.setContents(new MarkupContent(MarkupKind.MARKDOWN, text));
+        setHoverRange(nodeHovered, hov);
+        return hov;
+    }
+
+    /**
+     * Set the range of the hover event depending of the node which is hovered
+     * @param nodeHovered Polyglot node hovered
+     * @param hover the hover object to edit
+     */
+    public void setHoverRange(PolyglotZipper nodeHovered, Hover hover){
+        Range r = new Range();
+        r.setStart(new Position(nodeHovered.getPosition().component1(), nodeHovered.getPosition().component2()));
+        r.setEnd(new Position(nodeHovered.getPosition().component1(), nodeHovered.getPosition().component2() + nodeHovered.getCode().length()));
+        hover.setRange(r);
+    }
+
+    /**
+     * Get Hover Regex info depending of the file path
+     * @param path path of file where the hover event is triggered
+     * @return Pair <String : Regex pattern, int : group to catch>
+     */
+    public Pair<String, Integer> getLanguageServerHoverRegex(Path path){
+        String pathS = path.toString();
+        int index = pathS.lastIndexOf('.');
+        if(index > 0){
+            String extension = pathS.substring(index+1);
+            String language = getLanguageFromExtension(extension);
+            if(language.equals("none")) return null;
+            PolyglotLanguageServerProperties.LanguageServerInfo info = this.languageServer.getLanguageInfo(language);
+            if(info.hoverRegex == null || info.hoverRegex.equals("")) return null;
+            return new Pair<>(info.hoverRegex, info.hoverRegexGroup);
+        }
+        return null;
+    }
+
+    /**
+     * ##################################### NOT IMPLEMENTED LSP REQUEST ###############################################
+     */
+
+    /**
+     * LSP codeAction Request Handler
+     * @param params
+     * @return
+     */
+    @Override
+    public CompletableFuture<List<Either<Command, CodeAction>>> codeAction(CodeActionParams params) {
+        return TextDocumentService.super.codeAction(params);
+    }
+
+    /**
+     * LSP resolveCodeAction Request Handler
+     * @param unresolved
+     * @return
+     */
+    @Override
+    public CompletableFuture<CodeAction> resolveCodeAction(CodeAction unresolved) {
+        return TextDocumentService.super.resolveCodeAction(unresolved);
+    }
+
+    /**
+     * LSP diagnostic Request Handler
+     * @param params
+     * @return
+     */
+    @Override
+    public CompletableFuture<DocumentDiagnosticReport> diagnostic(DocumentDiagnosticParams params) {
+        return TextDocumentService.super.diagnostic(params);
+    }
+
+    /**
+     * ################################################## UTILS ########################################################
+     */
+
+    /**
+     * Return programming language name from the file extension
+     * @param extension file extension
+     * @return programming language name of the file, "none" if not found
+     */
+    private String getLanguageFromExtension(String extension){
+        switch (extension){
+            case "js":
+                return "javascript";
+            case "py":
+                return "python";
+            default:
+                return "none";
+        }
     }
 
 }

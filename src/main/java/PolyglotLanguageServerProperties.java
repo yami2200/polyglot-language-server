@@ -12,17 +12,21 @@ public class PolyglotLanguageServerProperties {
 
     protected class LanguageServerInfo{
 
-        public LanguageServerInfo(String language, String ip, int port, ArrayList<String> command) {
+        public LanguageServerInfo(String language, String ip, int port, ArrayList<String> command, String hoverRegex, int hoverRegexGroup) {
             this.language = language;
             this.ip = ip;
             this.port = port;
             this.command = command;
+            this.hoverRegex = hoverRegex;
+            this.hoverRegexGroup = hoverRegexGroup;
         }
 
         String language;
         String ip;
         int port;
         ArrayList<String> command;
+        String hoverRegex;
+        int hoverRegexGroup;
 
     }
 

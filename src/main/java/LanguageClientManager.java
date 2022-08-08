@@ -5,7 +5,6 @@ import java.io.*;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.nio.file.Paths;
-import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.concurrent.CompletableFuture;
@@ -87,6 +86,41 @@ public class LanguageClientManager {
                 System.err.println(e);
             }
         }
+    }
+
+    public CompletableFuture<Hover> hoverRequest(HoverParams params){
+        CompletableFuture<Hover> future = new CompletableFuture<>();
+        String language = "";
+        try {
+            language = PolyglotTreeHandler.getfilePathToTreeHandler().get(Paths.get(new URI(params.getTextDocument().getUri()))).getLang();
+        } catch (URISyntaxException e) {
+            System.err.println(e);
+            return null;
+        }
+        if(languageClients.containsKey(language)){
+            languageClients.get(language).hoverRequest(params).thenApply((v) -> {
+                try{
+                    Hover hov = (Hover) v;
+                    future.complete(hov);
+                } catch (Exception e){
+                    future.complete(null);
+                }
+               return v;
+            });
+            return future;
+        }
+        LanguageServerClient newclient = createNewClient(language);
+        if(newclient == null) return null;
+        newclient.hoverRequest(params).thenApply((v) -> {
+            try{
+                Hover hov = (Hover) v;
+                future.complete(hov);
+            } catch (Exception e){
+                future.complete(null);
+            }
+            return v;
+        });
+        return future;
     }
 
     public CompletableFuture<Object> shutdown(){

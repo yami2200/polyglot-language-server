@@ -12,7 +12,9 @@
         "127.0.0.1",
         "--port",
         "2087"
-      ]
+      ],
+      "hoverRegex" : " -> (\\w*)\\n",
+      "hoverRegexGroup" : 1
     },
     {
       "language" : "javascript",
@@ -21,7 +23,9 @@
       "command": [
         "/home/romain/bin/node-v16.15.1-linux-x64/bin/node",
         "/home/romain/Desktop/LanguageServersTest/javascript-typescript-langserver-master/lib/language-server"
-      ]
+      ],
+      "hoverRegex" : ": (.*)\"",
+      "hoverRegexGroup" : 1
     }
   ]
 }
