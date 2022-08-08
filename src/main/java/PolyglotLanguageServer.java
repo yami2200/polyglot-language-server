@@ -16,15 +16,15 @@ import java.util.concurrent.CompletableFuture;
 
 public class PolyglotLanguageServer implements LanguageServer, LanguageClientAware {
 
-    private TextDocumentService textDocumentService;
-    private WorkspaceService workspaceService;
-    private ClientCapabilities clientCapabilities;
-    LanguageClient languageClient;
-    private int shutdown = 1;
-    protected InitializeParams initializationParams;
-    protected LanguageClientManager languageClientManager;
-    protected PolyglotLanguageServerProperties properties;
-    CompletableFuture<Object> shutdownFuture;
+    private TextDocumentService textDocumentService; // Text Document Service ref -> handle LSP textDocument requests
+    private WorkspaceService workspaceService; // Workspace Service ref -> handle LSP Workspace requests
+    private ClientCapabilities clientCapabilities; // Clients capabilities sent by the client during initialization
+    LanguageClient languageClient; // Reference to the language Client
+    private int shutdown = 1; // Shutdown Code
+    protected InitializeParams initializationParams; // Initialize Parameters used for all Language Servers initializations
+    protected LanguageClientManager languageClientManager; // Language Clients Manager for all Language Servers of specific language
+    protected PolyglotLanguageServerProperties properties; // Properties of the Polyglot Language Server
+    CompletableFuture<Object> shutdownFuture; // Completable Future for the shutdown of the server
 
     public PolyglotLanguageServer() {
         this.textDocumentService = new PolyglotTextDocumentService(this);
@@ -41,40 +41,57 @@ public class PolyglotLanguageServer implements LanguageServer, LanguageClientAwa
         Runtime.getRuntime().addShutdownHook(closeChildLSThread);
     }
 
+    /**
+     * Event fired when a client connects to the server
+     * @param languageClient language client which is connected to the server
+     */
     @Override
     public void connect(LanguageClient languageClient) {
         this.languageClient = languageClient;
+        // Initialize Client Logger
         LSClientLogger.getInstance().initialize(this.languageClient);
     }
 
+    /**
+     * LSP initialize request Handler
+     * @param initializeParams Initialize Parameters
+     * @return Initialize Result (Server capabilities)
+     */
     @Override
     public CompletableFuture<InitializeResult> initialize(InitializeParams initializeParams) {
         final InitializeResult response = new InitializeResult(new ServerCapabilities());
-        //Set the document synchronization capabilities to full.
+
+        //Set the document synchronization capabilities to full (each change request will send all the code of the file, not only the edition)
         response.getCapabilities().setTextDocumentSync(TextDocumentSyncKind.Full);
+
         this.initializationParams = initializeParams;
-        response.getCapabilities().setHoverProvider(true);
-        //response.getCapabilities().
+
         this.clientCapabilities = initializeParams.getCapabilities();
 
+        // Set Hover Provider to true
+        response.getCapabilities().setHoverProvider(true);
+
+        // Get server properties
         this.properties = getProperties();
         if(this.properties == null){
             throw new RuntimeException("Properties of Polyglot Language Server has not been loaded correctly");
         }
 
+        // Create a Language Client Manager
         this.languageClientManager = new LanguageClientManager(this);
 
-        /* Check if dynamic registration of completion capability is allowed by the client. If so we don't register the capability.
-           Else, we register the completion capability.
-         */
+        // Register completion capability if the client can handle it
         if (!isDynamicCompletionRegistration()) {
             response.getCapabilities().setCompletionProvider(new CompletionOptions());
         }
         return CompletableFuture.supplyAsync(() -> response);
     }
 
+    /**
+     * Get Polyglot Language Server properties from the propertise.json in resources folder
+     * @return the Language Server properties, or null if error occured
+     */
     private PolyglotLanguageServerProperties getProperties(){
-
         try {
             ClassLoader classLoader = getClass().getClassLoader();
             InputStream is = classLoader.getResourceAsStream("properties/properties.json");
@@ -89,6 +106,11 @@ public class PolyglotLanguageServer implements LanguageServer, LanguageClientAwa
         return null;
     }
 
+    /**
+     * Get language Server info for specific language
+     * @param language language of language server
+     * @return information about language server of specific language, null if language is not found
+     */
     public PolyglotLanguageServerProperties.LanguageServerInfo getLanguageInfo(String language){
         for (PolyglotLanguageServerProperties.LanguageServerInfo l : this.properties.ls) {
             if(l.language.equals(language)) return l;
@@ -96,6 +118,10 @@ public class PolyglotLanguageServer implements LanguageServer, LanguageClientAwa
         return null;
     }
 
+    /**
+     * LSP Initialized Notification Handler
+     * @param params Initialized Params
+     */
     @Override
     public void initialized(InitializedParams params) {
         //Check if dynamic completion support is allowed, if so register.
@@ -107,11 +133,19 @@ public class PolyglotLanguageServer implements LanguageServer, LanguageClientAwa
         }
     }
 
+    /**
+     * Return the dynamicCompletion capability
+     * @return the dynamic completion is registered
+     */
     private boolean isDynamicCompletionRegistration() {
         TextDocumentClientCapabilities textDocumentCapabilities = clientCapabilities.getTextDocument();
         return textDocumentCapabilities != null && textDocumentCapabilities.getCompletion() != null && Boolean.FALSE.equals(textDocumentCapabilities.getCompletion().getDynamicRegistration());
     }
 
+    /**
+     * LSP Shutdown Request Handler
+     * @return future object (return value doesn't matter for this request except for error code)
+     */
     @Override
     public CompletableFuture<Object> shutdown() {
         this.shutdownFuture = new CompletableFuture<Object>();
@@ -123,17 +157,28 @@ public class PolyglotLanguageServer implements LanguageServer, LanguageClientAwa
         return this.shutdownFuture;
     }
 
+    /**
+     * LSP Exit Notification Handler
+     */
     @Override
     public void exit() {
         this.languageClientManager.shutdown();
         System.exit(shutdown);
     }
 
+    /**
+     * Get Polyglot Language Server Text Document Service Reference
+     * @return Polyglot Language Server Text Document Service Reference
+     */
     @Override
     public TextDocumentService getTextDocumentService() {
         return this.textDocumentService;
     }
 
+    /**
+     * Get Polyglot Language Server Workspace Service Reference
+     * @return Polyglot Language Server Workspace Service Reference
+     */
     @Override
     public WorkspaceService getWorkspaceService() {
         return this.workspaceService;
