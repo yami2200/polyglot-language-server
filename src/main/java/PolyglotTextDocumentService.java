@@ -516,7 +516,7 @@ public class PolyglotTextDocumentService implements TextDocumentService {
                                 String text = h.getContents().toString();
                                 Matcher m = p.matcher(text);
                                 if(m.find()){
-                                    return getHoverObject(zipper, m.group(hoverInfo.component2()), hostTree, hostTrees.size());
+                                    return getHoverObject(zipper, m.group(hoverInfo.component2()).replaceAll("\\\\n", "\n"), hostTree, hostTrees.size());
                                 }
                             }
                             // Regex didn't worked, just return the hover result from the language server

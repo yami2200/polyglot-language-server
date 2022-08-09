@@ -91,7 +91,6 @@ public class LanguageServerClient extends Thread implements LanguageClient {
         for (LSRequest pendingInitializationRequest : this.pendingInitializationRequests) {
             try {
                 Object result_f = pendingInitializationRequest.function.apply(pendingInitializationRequest.params);
-                this.clientLogger.logMessage("Pending send : "+pendingInitializationRequest.id + " "+this.language);
                 if(result_f != null){
                     CompletableFuture<Object> result = (CompletableFuture<Object>) result_f;
                     if(result != null){
@@ -108,7 +107,7 @@ public class LanguageServerClient extends Thread implements LanguageClient {
     }
 
     public synchronized void didOpenRequest(DidOpenTextDocumentParams params){
-        CompletableFuture<Object> future = this.checkRequestPreInitialization(params, "didOpenRequest", (param) -> {this.didOpenRequest((DidOpenTextDocumentParams) param);return null;});
+        CompletableFuture<Object> future = this.checkRequestPreInitialization(params, (param) -> {this.didOpenRequest((DidOpenTextDocumentParams) param);return null;});
         if(future == null) {
             this.clientLogger.logMessage("didOpenRequest to "+this.language+" language server at URI : "+params.getTextDocument().getUri());
             this.remoteEndpoint.notify("textDocument/didOpen", params);
@@ -116,7 +115,7 @@ public class LanguageServerClient extends Thread implements LanguageClient {
     }
 
     public synchronized void didChangeRequest(DidChangeTextDocumentParams params){
-        CompletableFuture<Object> future = this.checkRequestPreInitialization(params, "didChangeRequest", (param) -> {this.didChangeRequest((DidChangeTextDocumentParams) param);return null;});
+        CompletableFuture<Object> future = this.checkRequestPreInitialization(params, (param) -> {this.didChangeRequest((DidChangeTextDocumentParams) param);return null;});
         if(future == null){
             this.clientLogger.logMessage("change request to LS "+this.language);
             this.remoteEndpoint.notify("textDocument/didChange", params);
@@ -124,17 +123,17 @@ public class LanguageServerClient extends Thread implements LanguageClient {
     }
 
     public synchronized void didSaveRequest(DidSaveTextDocumentParams params){
-        CompletableFuture<Object> future = this.checkRequestPreInitialization(params, "didSaveRequest", (param) -> {this.didSaveRequest((DidSaveTextDocumentParams) param);return null;});
+        CompletableFuture<Object> future = this.checkRequestPreInitialization(params, (param) -> {this.didSaveRequest((DidSaveTextDocumentParams) param);return null;});
         if(future == null) this.remoteEndpoint.notify("textDocument/didSave", params);
     }
 
     public synchronized void didRenameFiles(RenameFilesParams params){
-        CompletableFuture<Object> future = this.checkRequestPreInitialization(params, "didRenameFiles", (param) -> {this.didRenameFiles((RenameFilesParams) param);return null;});
+        CompletableFuture<Object> future = this.checkRequestPreInitialization(params, (param) -> {this.didRenameFiles((RenameFilesParams) param);return null;});
         if(future == null) this.remoteEndpoint.notify("workspace/didRenameFiles", params);
     }
 
     public synchronized CompletableFuture<Object> hoverRequest(HoverParams params){
-        CompletableFuture<Object> future = this.checkRequestPreInitialization(params, "hoverRequest", (param) -> {return this.hoverRequest((HoverParams) param);});
+        CompletableFuture<Object> future = this.checkRequestPreInitialization(params, (param) -> {return this.hoverRequest((HoverParams) param);});
         if(future == null) {
             this.clientLogger.logMessage("Request from LS "+this.language);
             return this.remoteEndpoint.request("textDocument/hover", params);
@@ -142,10 +141,10 @@ public class LanguageServerClient extends Thread implements LanguageClient {
         return future;
     }
 
-    private synchronized CompletableFuture<Object> checkRequestPreInitialization(Object params, String requestId, Function function){
+    private synchronized CompletableFuture<Object> checkRequestPreInitialization(Object params, Function function){
         if(!this.isInitialized){
             CompletableFuture<Object> future = new CompletableFuture<>();
-            this.pendingInitializationRequests.add(new LSRequest(requestId, params, future, function));
+            this.pendingInitializationRequests.add(new LSRequest(params, future, function));
             return future;
         }
         return null;
