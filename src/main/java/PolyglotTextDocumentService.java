@@ -22,7 +22,7 @@ public class PolyglotTextDocumentService implements TextDocumentService {
     private PolyglotLanguageServer languageServer; // Reference to the language Server
     private LSClientLogger clientLogger; // Reference to the instance of clientLogger
     private PolyglotDiagnosticsHandler diagHandler; // Reference to diagnostic Handler
-    private HashSet<Path> externLSOpenedPahts; // Set of all paths that have been opened in extern Language Server (Used to avoid duplicated open request)
+    private HashSet<Path> externLSOpenedPaths; // Set of all paths that have been opened in extern Language Server (Used to avoid duplicated open request)
 
 
 
@@ -30,7 +30,7 @@ public class PolyglotTextDocumentService implements TextDocumentService {
         this.languageServer = languageServer;
         this.clientLogger = LSClientLogger.getInstance();
         this.diagHandler = new PolyglotDiagnosticsHandler(this.languageServer);
-        this.externLSOpenedPahts = new HashSet<>();
+        this.externLSOpenedPaths = new HashSet<>();
     }
 
     /**
@@ -39,7 +39,7 @@ public class PolyglotTextDocumentService implements TextDocumentService {
 
     /**
      * LSP didOpen Request Handler
-     * @param didOpenTextDocumentParams
+     * @param didOpenTextDocumentParams DidOpenTextDocumentParams
      */
     @Override
     public void didOpen(DidOpenTextDocumentParams didOpenTextDocumentParams) {
@@ -56,19 +56,20 @@ public class PolyglotTextDocumentService implements TextDocumentService {
             try {
                 this.changeTree(uri, Files.readString(path));
             } catch (Exception e) {
+                System.err.println(e.getMessage());
             }
         } else {
             try {
                 this.createTree(uri);
             } catch (Exception e) {
-                throw new RuntimeException(e);
+                System.err.println(e.getMessage());
             }
         }
     }
 
     /**
      * LSP didChange Request Handler
-     * @param didChangeTextDocumentParams
+     * @param didChangeTextDocumentParams DidChangeTextDocumentParams
      */
     @Override
     public void didChange(DidChangeTextDocumentParams didChangeTextDocumentParams) {
@@ -103,7 +104,7 @@ public class PolyglotTextDocumentService implements TextDocumentService {
 
     /**
      * LSP didClose Request Handler
-     * @param didCloseTextDocumentParams
+     * @param didCloseTextDocumentParams DidCloseTextDocumentParams
      */
     @Override
     public void didClose(DidCloseTextDocumentParams didCloseTextDocumentParams) {
@@ -112,7 +113,7 @@ public class PolyglotTextDocumentService implements TextDocumentService {
 
     /**
      * LSP didSave Request Handler
-     * @param didSaveTextDocumentParams
+     * @param didSaveTextDocumentParams DidSaveTextDocumentParams
      */
     @Override
     public void didSave(DidSaveTextDocumentParams didSaveTextDocumentParams) {
@@ -146,7 +147,6 @@ public class PolyglotTextDocumentService implements TextDocumentService {
      * Update AST of specific file with the new code, and update all diagnostics related to the edition
      * @param uri uri of file changed
      * @param newCode new code of the file
-     * @throws URISyntaxException
      */
     public void changeTree(String uri, String newCode) throws URISyntaxException {
         Path path = Paths.get(new URI(uri));
@@ -173,8 +173,6 @@ public class PolyglotTextDocumentService implements TextDocumentService {
     /**
      * Parse a new Polyglot AST from uri, parse all files in directory and process all diagnostics for all these files
      * @param uri Uri of the file to parse
-     * @throws URISyntaxException
-     * @throws IOException
      */
     public void createTree(String uri) throws URISyntaxException, IOException {
         // Check if the file has not been parsed before
@@ -216,7 +214,6 @@ public class PolyglotTextDocumentService implements TextDocumentService {
     /**
      * Parse all Files into Polyglot ASTs from the same directory of the file passed in parameter
      * @param filePath file directory to look in
-     * @throws IOException
      */
     public void createTreesFromDirectory(String filePath) throws IOException {
         File dir = new File(filePath);
@@ -247,10 +244,9 @@ public class PolyglotTextDocumentService implements TextDocumentService {
     /**
      * Send didOpen Request to specific Language Server of File Language Programming
      * @param path file opened
-     * @throws IOException
      */
     public void sendDidOpenRequestToLanguageServers(Path path) throws IOException {
-        if(this.externLSOpenedPahts.contains(path)) return;
+        if(this.externLSOpenedPaths.contains(path)) return;
         DidOpenTextDocumentParams params = new DidOpenTextDocumentParams();
         TextDocumentItem tdi = new TextDocumentItem();
         tdi.setVersion(1);
@@ -258,7 +254,7 @@ public class PolyglotTextDocumentService implements TextDocumentService {
         tdi.setUri(path.toUri().toString());
         tdi.setText(Files.readString(path));
         params.setTextDocument(tdi);
-        this.externLSOpenedPahts.add(path);
+        this.externLSOpenedPaths.add(path);
         this.languageServer.languageClientManager.didOpenRequest(params);
     }
 
@@ -282,7 +278,7 @@ public class PolyglotTextDocumentService implements TextDocumentService {
                     if(filesNotFound.containsKey(path)){
                         filesNotFound.get(path).add(fileNotFound);
                     } else {
-                        HashSet<FileNotFoundInfo> set = new HashSet<FileNotFoundInfo>();
+                        HashSet<FileNotFoundInfo> set = new HashSet<>();
                         set.add(fileNotFound);
                         filesNotFound.put(path, set);
                     }
@@ -372,12 +368,12 @@ public class PolyglotTextDocumentService implements TextDocumentService {
                 }
             }
 
-            // Error : Evaluate the file A into the file A (could cause infinite loop evaluation and so on)
+            // Warning : Evaluate the file A into the file A (could cause infinite loop evaluation and so on)
             for (CodeArea codeArea : du.getEvalSameFile()) {
                 if(!diagnosticsID.contains("evalSameFile"+codeArea.id)) {
                     diagnosticsID.add("evalSameFile"+codeArea.id);
                     this.addImportExportDiagnostic("Dangerous file eval. You are evaluating the same file you are currently in.",
-                            "Polyglot Eval", DiagnosticSeverity.Error, codeArea.filePath,
+                            "Polyglot Eval", DiagnosticSeverity.Warning, codeArea.filePath,
                             new Range(new Position(codeArea.line_pos, codeArea.char_pos), new Position(codeArea.line_pos_end, codeArea.char_pos_end)),
                             codeArea.filePath);
                 }
@@ -433,7 +429,6 @@ public class PolyglotTextDocumentService implements TextDocumentService {
      * Fill the list passed in parameters, with completions items of un-imported polyglot variables
      * @param completionParams CompletionParams
      * @param listCompletions the list to fill with completion items
-     * @throws URISyntaxException
      */
     public void checkCompletion(CompletionParams completionParams, ArrayList<CompletionItem> listCompletions) throws URISyntaxException {
         // PROTOTYPE : only works when beginning a new line
@@ -454,7 +449,7 @@ public class PolyglotTextDocumentService implements TextDocumentService {
             for (String var : listVarNotImported) {
                 CompletionItem completionItem = new CompletionItem();
                 completionItem.setLabel(var);
-                // Set insertText depending of the file programming language
+                // Set insertText depending on the file programming language
                 switch (currentTree.getLang()){
                     case "python":
                         completionItem.setInsertText(var+" = polyglot.import_value(name=\""+var+"\")\r\n");
@@ -550,7 +545,7 @@ public class PolyglotTextDocumentService implements TextDocumentService {
     }
 
     /**
-     * Set the range of the hover event depending of the node which is hovered
+     * Set the range of the hover event depending on the node which is hovered
      * @param nodeHovered Polyglot node hovered
      * @param hover the hover object to edit
      */
@@ -562,7 +557,7 @@ public class PolyglotTextDocumentService implements TextDocumentService {
     }
 
     /**
-     * Get Hover Regex info depending of the file path
+     * Get Hover Regex info depending on the file path
      * @param path path of file where the hover event is triggered
      * @return Pair <String : Regex pattern, int : group to catch>
      */
@@ -586,8 +581,6 @@ public class PolyglotTextDocumentService implements TextDocumentService {
 
     /**
      * LSP codeAction Request Handler
-     * @param params
-     * @return
      */
     @Override
     public CompletableFuture<List<Either<Command, CodeAction>>> codeAction(CodeActionParams params) {
@@ -596,8 +589,6 @@ public class PolyglotTextDocumentService implements TextDocumentService {
 
     /**
      * LSP resolveCodeAction Request Handler
-     * @param unresolved
-     * @return
      */
     @Override
     public CompletableFuture<CodeAction> resolveCodeAction(CodeAction unresolved) {
@@ -606,8 +597,6 @@ public class PolyglotTextDocumentService implements TextDocumentService {
 
     /**
      * LSP diagnostic Request Handler
-     * @param params
-     * @return
      */
     @Override
     public CompletableFuture<DocumentDiagnosticReport> diagnostic(DocumentDiagnosticParams params) {
