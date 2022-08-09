@@ -28,8 +28,6 @@ public class PolyglotLanguageServerLauncher {
         } catch (IOException | InterruptedException | ExecutionException e) {
             System.err.println(e);
         }
-
-        //startServer(System.in, System.out);
     }
 
     /**
