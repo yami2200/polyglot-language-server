@@ -13,18 +13,16 @@ import java.util.function.Function;
 
 public class LanguageServerClient extends Thread implements LanguageClient {
 
-    private final String language;
-    private final String ip;
-    private final int port;
-    private BufferedReader input;
-    private PrintWriter output;
-    private Socket clientSocket;
-    private boolean isInitialized = false;
-    private RemoteEndpoint remoteEndpoint;
-    private PolyglotLanguageServer polyglotLSref;
-    private ArrayList<LSRequest> pendingInitializationRequests;
-    private LSClientLogger clientLogger;
-    CompletableFuture<Object> shutdownFuture;
+    private final String language; // Programming language of language server which the client connects to
+    private final String ip; // IP of language server which the client connects to
+    private final int port; // port of language server which the client connects to
+    private Socket clientSocket; // Socket to handle connection with the language server
+    private boolean isInitialized = false; // Store if the client is initialized (exchange initialization request with server)
+    private RemoteEndpoint remoteEndpoint; // Endpoint used to make request & notification to the server
+    private PolyglotLanguageServer polyglotLSref; // Reference to the polyglot language server
+    private ArrayList<LSRequest> pendingInitializationRequests; // List of requests waiting the initialization, before to be sent
+    private LSClientLogger clientLogger; // Reference to the Polyglot client logger
+    CompletableFuture<Object> shutdownFuture; // CompletableFuture used to store Shutdown Future
 
     public LanguageServerClient(String language, String ip, int port, PolyglotLanguageServer polyglotLSref){
         this.language = language;
@@ -35,14 +33,16 @@ public class LanguageServerClient extends Thread implements LanguageClient {
         this.clientLogger = LSClientLogger.getInstance();
     }
 
+    /**
+     * Connects to the language server
+     * @return the client is connected to the language server
+     */
     public boolean connect(){
         int connectionTry = 10;
         while(connectionTry > 0){
             connectionTry--;
             try {
                 this.clientSocket = new Socket(this.ip, this.port);
-                this.input = new BufferedReader(new InputStreamReader(clientSocket.getInputStream()));
-                this.output = new PrintWriter(new OutputStreamWriter(clientSocket.getOutputStream()), true);
                 Launcher<LanguageServer> launcher = LSPLauncher.createClientLauncher(this, clientSocket.getInputStream(), clientSocket.getOutputStream());
                 this.initializeConnection(launcher.getRemoteProxy());
                 this.remoteEndpoint = launcher.getRemoteEndpoint();
@@ -59,14 +59,26 @@ public class LanguageServerClient extends Thread implements LanguageClient {
         return false;
     }
 
+    /**
+     * Verify if the client is connected to the language server
+     * @return the client is connected to the language server
+     */
     public boolean isConnected(){
         return this.clientSocket != null && this.clientSocket.isConnected();
     }
 
+    /**
+     * Verify if the client has been initialized with LSP
+     * @return the client has been initialized with LSP
+     */
     public boolean isInitialized(){
         return this.isInitialized;
     }
 
+    /**
+     * Send shutdown request & exit notification to the language server
+     * @return response from language server
+     */
     public CompletableFuture<Object> shutdown(){
         this.shutdownFuture = new CompletableFuture<>();
         this.remoteEndpoint.request("shutdown", null).thenApply((v) -> {
@@ -77,6 +89,10 @@ public class LanguageServerClient extends Thread implements LanguageClient {
         return this.shutdownFuture;
     }
 
+    /**
+     * Send Initialize request & initialized notification to the language server
+     * @param remoteProxy LSP4J Language Server ref
+     */
     private void initializeConnection(LanguageServer remoteProxy) {
         InitializeParams params = this.polyglotLSref.initializationParams;
         remoteProxy.initialize(params).thenApply(k -> {
@@ -86,6 +102,9 @@ public class LanguageServerClient extends Thread implements LanguageClient {
         });
     }
 
+    /**
+     * Final step to initialized the client, send all requests which were waiting the initialization
+     */
     private void initialized(){
         this.isInitialized = true;
         for (LSRequest pendingInitializationRequest : this.pendingInitializationRequests) {
@@ -106,6 +125,10 @@ public class LanguageServerClient extends Thread implements LanguageClient {
         }
     }
 
+    /**
+     * Send didOpen LSP notification to the language Server
+     * @param params DidOpenTextDocumentParams
+     */
     public synchronized void didOpenRequest(DidOpenTextDocumentParams params){
         CompletableFuture<Object> future = this.checkRequestPreInitialization(params, (param) -> {this.didOpenRequest((DidOpenTextDocumentParams) param);return null;});
         if(future == null) {
@@ -114,6 +137,10 @@ public class LanguageServerClient extends Thread implements LanguageClient {
         }
     }
 
+    /**
+     * Send didChangeRequest LSP notification to the language Server
+     * @param params DidChangeTextDocumentParams
+     */
     public synchronized void didChangeRequest(DidChangeTextDocumentParams params){
         CompletableFuture<Object> future = this.checkRequestPreInitialization(params, (param) -> {this.didChangeRequest((DidChangeTextDocumentParams) param);return null;});
         if(future == null){
@@ -122,16 +149,28 @@ public class LanguageServerClient extends Thread implements LanguageClient {
         }
     }
 
+    /**
+     * Send didSaveRequest LSP notification to the language Server
+     * @param params DidSaveTextDocumentParams
+     */
     public synchronized void didSaveRequest(DidSaveTextDocumentParams params){
         CompletableFuture<Object> future = this.checkRequestPreInitialization(params, (param) -> {this.didSaveRequest((DidSaveTextDocumentParams) param);return null;});
         if(future == null) this.remoteEndpoint.notify("textDocument/didSave", params);
     }
 
+    /**
+     * Send didRenameFiles LSP notification to the language Server
+     * @param params RenameFilesParams
+     */
     public synchronized void didRenameFiles(RenameFilesParams params){
         CompletableFuture<Object> future = this.checkRequestPreInitialization(params, (param) -> {this.didRenameFiles((RenameFilesParams) param);return null;});
         if(future == null) this.remoteEndpoint.notify("workspace/didRenameFiles", params);
     }
 
+    /**
+     * Send hover LSP Request to the language Server
+     * @param params HoverParams
+     */
     public synchronized CompletableFuture<Object> hoverRequest(HoverParams params){
         CompletableFuture<Object> future = this.checkRequestPreInitialization(params, (param) -> {return this.hoverRequest((HoverParams) param);});
         if(future == null) {
@@ -141,6 +180,12 @@ public class LanguageServerClient extends Thread implements LanguageClient {
         return future;
     }
 
+    /**
+     * Return null if the client is initialized, otherwise add the request to pending initialization list and return the future of the request
+     * @param params Parameters of the request
+     * @param function function to call when the client will be initialized
+     * @return null if the client is initialized, the future of the pending request
+     */
     private synchronized CompletableFuture<Object> checkRequestPreInitialization(Object params, Function function){
         if(!this.isInitialized){
             CompletableFuture<Object> future = new CompletableFuture<>();
@@ -151,7 +196,7 @@ public class LanguageServerClient extends Thread implements LanguageClient {
     }
 
     /**
-     * LANGUAGE CLIENT METHOD SECTION
+     * LANGUAGE CLIENT METHOD SECTION, METHODS NOT USED
      */
     @Override
     public void telemetryEvent(Object object) {
