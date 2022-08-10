@@ -35,6 +35,8 @@ Diagnostics are information, warning or error messages represented with an under
 
 ### How it works :
 
+After a change, the language server make a linear visit of the polyglot AST and isolate some inconsistencies with the import and export statements.
+
 ## Type Checking :
 ### Description  :
 Type Checking gives you the possibility to get the type of variable that was imported from polyglot context.
