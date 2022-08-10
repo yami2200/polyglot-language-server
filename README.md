@@ -6,10 +6,57 @@ The drawback of developing such applications is that there are no tools for deve
 Polyglot Language Server is a prototype which provides diagnostics, type checking & auto-completion for Polyglot's GraalVM programs.
 
 # :hammer: How to install :
+It is highly recommend to run on linux.
+All these steps have been tested on an ubuntu docker container (look at Dockerfile for details).
+### 0 - Prerequisites :
+Install packages :
+```bash
+sudo apt-get install python3                        #PYTHON3
+sudo apt-get install nodejs                         #NODEJS
+sudo apt install openjdk-11-jre-headless            #JDK11
+sudo apt install git                                #GIT
+sudo apt-get install build-essential                #BUILD ESSENTIAL
+sudo apt install maven                              #MAVEN
+sudo apt-get install build-essential cmake          #CMAKE
+sudo apt install clang-14 --install-suggests        #CLANG
+sudo apt install default-jdk                        #DEFAULT JDK
+```
+
+Add links to clang :
+```bash
+sudo ln -s /usr/bin/clang-14 /usr/bin/clang
+sudo ln -s /usr/bin/clang++-14 /usr/bin/clang++
+```
+
+Export java home variable :
+```bash
+sudo export JAVA_HOME=/usr/lib/jvm/java-11-openjdk-amd64
+```
+
+Create an empty directory and cd in it. Clone all these repositories in this folder :
+
+```bash
+git clone https://github.com/quentinLeDilavrec/jsitter
+git clone https://github.com/yami2200/tree-sitter
+git clone https://github.com/tree-sitter/tree-sitter-python
+git clone https://github.com/tree-sitter/tree-sitter-javascript
+git clone https://github.com/yami2200/polyglot-language-server
+git clone https://github.com/tree-sitter/tree-sitter-go
+git clone https://github.com/tree-sitter/tree-sitter-java
+git clone https://github.com/yami2200/PolyglotAST
+```
 
 ### 1 - Polyglot AST :
 
+From the folder created previously, runs these commands :
+```bash
+cd ./PolyglotAST
+sudo ./install.sh
+```
+
 ### 2 - Polyglot Language Server : 
+
+
 
 ### 3 - Polyglot Language Client (vscode) :
 
