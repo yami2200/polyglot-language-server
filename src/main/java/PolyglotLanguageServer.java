@@ -32,8 +32,10 @@ public class PolyglotLanguageServer implements LanguageServer, LanguageClientAwa
 
         Thread closeChildLSThread = new Thread() {
             public void run() {
+                if(languageClientManager == null || languageClientManager.languageServersProcess == null) return;
                 for (Process p : languageClientManager.languageServersProcess.values()) {
-                    p.destroy();
+                    if(p!=null) p.destroy();
+
                 };
             }
         };
