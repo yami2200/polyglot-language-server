@@ -41,7 +41,7 @@ git clone https://github.com/quentinLeDilavrec/jsitter
 git clone https://github.com/yami2200/tree-sitter
 git clone https://github.com/tree-sitter/tree-sitter-python
 git clone https://github.com/tree-sitter/tree-sitter-javascript
-git clone https://github.com/yami2200/polyglot-language-server
+git clone --recurse-submodules https://github.com/yami2200/polyglot-language-server
 git clone https://github.com/tree-sitter/tree-sitter-go
 git clone https://github.com/tree-sitter/tree-sitter-java
 git clone https://github.com/yami2200/PolyglotAST

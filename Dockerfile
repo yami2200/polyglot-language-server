@@ -24,10 +24,10 @@ RUN git clone https://github.com/quentinLeDilavrec/jsitter
 RUN git clone https://github.com/yami2200/tree-sitter
 RUN git clone https://github.com/tree-sitter/tree-sitter-python
 RUN git clone https://github.com/tree-sitter/tree-sitter-javascript
-RUN git clone https://github.com/yami2200/polyglot-language-server
+RUN git clone --recurse-submodules https://github.com/yami2200/polyglot-language-server
 RUN git clone https://github.com/tree-sitter/tree-sitter-go
 RUN git clone https://github.com/tree-sitter/tree-sitter-java
-ADD "https://www.random.org/cgi-bin/randbyte?nbytes=10&format=h" skipcache
+#ADD "https://www.random.org/cgi-bin/randbyte?nbytes=10&format=h" skipcache
 RUN git clone https://github.com/yami2200/PolyglotAST
 
 WORKDIR /home/PolyglotAST/
@@ -35,5 +35,16 @@ WORKDIR /home/PolyglotAST/
 # Setup Jsitter & PolyglotAST
 RUN ./install.sh
 
-
 # Setup Polyglot Language Server
+WORKDIR /home/polyglot-language-server/
+RUN apt-get -qq -y install npm
+WORKDIR /home/polyglot-language-server/javascript-typescript-langserver
+RUN npm install
+RUN npm run build
+WORKDIR /home/polyglot-language-server/python-language-server
+RUN apt-get -qq -y install python3-pip
+RUN pip install 'python-language-server[all]'
+WORKDIR /home/polyglot-language-server/
+RUN mvn clean install -U
+RUN mvn compile
+RUN mvn test
