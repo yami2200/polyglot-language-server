@@ -20,6 +20,7 @@ sudo apt install maven                              #MAVEN
 sudo apt-get install build-essential cmake          #CMAKE
 sudo apt install clang-14 --install-suggests        #CLANG
 sudo apt install default-jdk                        #DEFAULT JDK
+sudo apt install node-typescript                    #NODE TYPESCRIPT
 ```
 
 Add links to clang :
@@ -59,6 +60,16 @@ sudo ./install.sh
 
 
 ### 3 - Polyglot Language Client (vscode) :
+
+Go to the folder polyglot-language-server/vscode-client/ and run :
+```bash
+npm install
+npm run compile
+```
+
+Open vscode and open the folder polyglot-language-server/vscode-client/ in vscode.
+Open src/core/extension.ts, press F5, and click on "VS Code Extension Development".
+This will run a new Vscode Window with the extension running.
 
 # :closed_book: Features :
 

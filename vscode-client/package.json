@@ -1,0 +1,74 @@
+{
+  "name": "polyglot-graalvm-extension",
+  "displayName": "polyglot-graalvm-extension",
+  "description": "",
+  "version": "0.0.1",
+  "engines": {
+    "vscode": "^1.68.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "*"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "languages": [
+      {
+        "id": "python",
+        "aliases": [
+          "Python",
+          "python"
+        ],
+        "extensions": [
+          ".py"
+        ]
+      },
+      {
+        "id": "javascript",
+        "aliases": [
+          "JavaScript",
+          "JS", 
+          "js"
+        ],
+        "extensions": [
+          ".js"
+        ]
+      }
+    ],
+    "commands": [
+      {
+        "command": "polyglot-graalvm-extension.helloWorld",
+        "title": "Hello World"
+      }
+    ]
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "pretest": "npm run compile && npm run lint",
+    "lint": "eslint src --ext ts",
+    "test": "node ./out/test/runTest.js"
+  },
+  "devDependencies": {
+    "@types/glob": "^7.2.0",
+    "@types/mocha": "^9.1.1",
+    "@types/node": "16.x",
+    "@types/vscode": "^1.68.0",
+    "@typescript-eslint/eslint-plugin": "^5.27.0",
+    "@typescript-eslint/parser": "^5.27.0",
+    "@vscode/test-electron": "^2.1.3",
+    "eslint": "^8.16.0",
+    "glob": "^8.0.3",
+    "mocha": "^10.0.0",
+    "typescript": "^4.7.2",
+    "@types/mz": "0.0.32"
+  },
+  "dependencies": {
+    "vscode-languageclient": "^8.0.1",
+    "vscode-languageserver-types": "^3.14.0",
+    "mz": "2.7.0"
+  }
+}

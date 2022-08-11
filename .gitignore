@@ -1,3 +1,6 @@
 # Project exclude paths
 /target/
 /compileNPackagewithASTreload.sh
+/vscode-client/out/
+/vscode-client/node_modules/
+/vscode-client/package-lock.json

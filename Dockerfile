@@ -11,6 +11,7 @@ RUN apt-get -qq -y install build-essential cmake    # CMAKE
 RUN apt -qq -y install maven                        # MAVEN
 RUN apt -qq -y install clang-14 --install-suggests  # CLANG
 RUN apt -qq -y install default-jdk
+RUN apt -qq -y install node-typescript              # NODE TYPESCRIPT
 
 RUN ln -s /usr/bin/clang-14 /usr/bin/clang
 RUN ln -s /usr/bin/clang++-14 /usr/bin/clang++
