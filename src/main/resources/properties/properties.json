@@ -21,8 +21,8 @@
       "ip" : "127.0.0.1",
       "port" : 2089,
       "command": [
-        "/home/romain/bin/node-v16.15.1-linux-x64/bin/node",
-        "/home/romain/Desktop/LanguageServersTest/javascript-typescript-langserver-master/lib/language-server"
+        "node",
+        "javascript-typescript-langserver/lib/language-server"
       ],
       "hoverRegex" : ": (.*)\"",
       "hoverRegexGroup" : 1

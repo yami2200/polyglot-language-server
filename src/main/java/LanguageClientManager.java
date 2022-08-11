@@ -215,11 +215,16 @@ public class LanguageClientManager {
         }
 
         try {
-            ProcessBuilder builder = new ProcessBuilder(lsInfo.command);
+            File file = new File(PolyglotLanguageServer.class.getProtectionDomain().getCodeSource().getLocation().toURI().getPath());
+            ProcessBuilder builder = new ProcessBuilder(lsInfo.command).directory(new File(file.getParent()));
             Process process = builder.inheritIO().start();
             this.languageServersProcess.put(client, process);
             return true;
         } catch (IOException e) {
+            System.err.println(e);
+            this.clientLogger.logMessage(e.getMessage());
+            return false;
+        } catch (URISyntaxException e) {
             System.err.println(e);
             this.clientLogger.logMessage(e.getMessage());
             return false;

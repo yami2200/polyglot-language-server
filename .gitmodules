@@ -1,0 +1,6 @@
+[submodule "python-language-server"]
+	path = python-language-server
+	url = https://github.com/palantir/python-language-server
+[submodule "javascript-typescript-langserver"]
+	path = javascript-typescript-langserver
+	url = https://github.com/sourcegraph/javascript-typescript-langserver

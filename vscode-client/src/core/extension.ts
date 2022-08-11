@@ -73,7 +73,7 @@ export class PolyglotExtension {
 //Create a command to be run to start the LS java process.
 function getServerOptions(outputChannel : vscode.OutputChannel) {
   //Change the project home accordingly.
-  const LS_LIB = "../language_server_lib/*";
+  const LS_LIB = path.resolve(__filename+"/../../../../PolyglotLanguageServer-1.0-SNAPSHOT-jar-with-dependencies.jar")
 
   let executable: string = path.join("java");
   let args: string[] = ["-cp", LS_LIB];

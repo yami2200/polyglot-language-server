@@ -4,3 +4,5 @@
 /vscode-client/out/
 /vscode-client/node_modules/
 /vscode-client/package-lock.json
+/PolyglotLanguageServer-1.0-SNAPSHOT-jar-with-dependencies.jar
+/javascript-typescript-langserver/node_modules/
