@@ -21,6 +21,8 @@ sudo apt-get install build-essential cmake          #CMAKE
 sudo apt install clang-14 --install-suggests        #CLANG
 sudo apt install default-jdk                        #DEFAULT JDK
 sudo apt install node-typescript                    #NODE TYPESCRIPT
+sudo apt-get install npm                            # NPM
+sudo apt-get install python3-pip                    # PIP
 ```
 
 Add links to clang :
@@ -56,8 +58,12 @@ sudo ./install.sh
 ```
 
 ### 2 - Polyglot Language Server : 
+Go to the folder polyglot-language-server/ and run :
+```bash
+./install.sh
+```
 
-
+If the tests run successfully, you're good to start testing it with the vscode client.
 
 ### 3 - Polyglot Language Client (vscode) :
 
@@ -70,6 +76,7 @@ npm run compile
 Open vscode and open the folder polyglot-language-server/vscode-client/ in vscode.
 Open src/core/extension.ts, press F5, and click on "VS Code Extension Development".
 This will run a new Vscode Window with the extension running.
+When testing the language server, you can go to the output tab and select the "Polyglot" channel to see what is happening in logs.
 
 # :closed_book: Features :
 

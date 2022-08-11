@@ -29,7 +29,6 @@ RUN git clone https://github.com/tree-sitter/tree-sitter-javascript
 RUN git clone https://github.com/tree-sitter/tree-sitter-go
 RUN git clone https://github.com/tree-sitter/tree-sitter-java
 RUN git clone https://github.com/yami2200/PolyglotAST
-RUN echo refresh
 RUN git clone --recurse-submodules https://github.com/yami2200/polyglot-language-server
 
 WORKDIR /home/PolyglotAST/
