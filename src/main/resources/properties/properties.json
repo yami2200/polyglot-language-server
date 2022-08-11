@@ -5,8 +5,7 @@
       "ip" : "127.0.0.1",
       "port" : 2087,
       "command": [
-        "/home/romain/Desktop/LanguageServersTest/python-language-server-develop/venv/bin/python",
-        "/home/romain/Desktop/LanguageServersTest/python-language-server-develop/pyls/__main__.py",
+        "pyls",
         "--tcp",
         "--host",
         "127.0.0.1",
