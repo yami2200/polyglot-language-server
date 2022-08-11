@@ -216,7 +216,12 @@ public class LanguageClientManager {
 
         try {
             File file = new File(PolyglotLanguageServer.class.getProtectionDomain().getCodeSource().getLocation().toURI().getPath());
-            ProcessBuilder builder = new ProcessBuilder(lsInfo.command).directory(new File(file.getParent()));
+            ProcessBuilder builder;
+            if(isJUnitTest()){
+                builder = new ProcessBuilder(lsInfo.command).directory(new File(new File(file.getParent()).getParent()));
+            } else {
+                builder = new ProcessBuilder(lsInfo.command).directory(new File(file.getParent()));
+            }
             Process process = builder.inheritIO().start();
             this.languageServersProcess.put(client, process);
             return true;
@@ -231,6 +236,18 @@ public class LanguageClientManager {
         }
     }
 
+    /**
+     * is this process running a JunitTest
+     * @return this process is running a JunitTest
+     */
+    public static boolean isJUnitTest() {
+            try {
+                Class.forName("org.junit.Test");
+            } catch (ClassNotFoundException e) {
+                return false;
+            }
+        return true;
+    }
 
 
 }
