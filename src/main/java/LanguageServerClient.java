@@ -103,7 +103,7 @@ public class LanguageServerClient extends Thread implements LanguageClient {
     }
 
     /**
-     * Final step to initialized the client, send all requests which were waiting the initialization
+     * Final step to initialize the client, send all requests which were waiting the initialization
      */
     private void initialized(){
         this.isInitialized = true;
