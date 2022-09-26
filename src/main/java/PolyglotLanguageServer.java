@@ -73,6 +73,9 @@ public class PolyglotLanguageServer implements LanguageServer, LanguageClientAwa
         // Set Hover Provider to true
         response.getCapabilities().setHoverProvider(true);
 
+        // Set Rename Provider to true
+        response.getCapabilities().setRenameProvider(true);
+
         // Get server properties
         this.properties = getProperties();
         if(this.properties == null){

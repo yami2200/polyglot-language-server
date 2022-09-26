@@ -28,7 +28,6 @@ public class LanguageClientManager {
      * @param params DidOpenTextDocumentParams
      */
     public void didOpenRequest(DidOpenTextDocumentParams params){
-        System.out.println(params);
         String language = params.getTextDocument().getLanguageId();
         if(languageClients.containsKey(language)){
             languageClients.get(language).didOpenRequest(params);
@@ -136,6 +135,45 @@ public class LanguageClientManager {
             try{
                 Hover hov = (Hover) v;
                 future.complete(hov);
+            } catch (Exception e){
+                future.complete(null);
+            }
+            return v;
+        });
+        return future;
+    }
+
+    /**
+     * Send LSP rename request to the proper language server (depending on file extension in params)
+     * @param params RenameParams
+     */
+    public CompletableFuture<WorkspaceEdit> renameRequest(RenameParams params){
+        CompletableFuture<WorkspaceEdit> future = new CompletableFuture<>();
+        String language = "";
+        try {
+            language = PolyglotTreeHandler.getfilePathToTreeHandler().get(Paths.get(new URI(params.getTextDocument().getUri()))).getLang();
+        } catch (URISyntaxException e) {
+            System.err.println(e);
+            return null;
+        }
+        if(languageClients.containsKey(language)){
+            languageClients.get(language).renameRequest(params).thenApply((v) -> {
+                try{
+                    WorkspaceEdit wedit = (WorkspaceEdit) v;
+                    future.complete(wedit);
+                } catch (Exception e){
+                    future.complete(null);
+                }
+                return v;
+            });
+            return future;
+        }
+        LanguageServerClient newclient = createNewClient(language);
+        if(newclient == null) return null;
+        newclient.renameRequest(params).thenApply((v) -> {
+            try{
+                WorkspaceEdit wedit = (WorkspaceEdit) v;
+                future.complete(wedit);
             } catch (Exception e){
                 future.complete(null);
             }

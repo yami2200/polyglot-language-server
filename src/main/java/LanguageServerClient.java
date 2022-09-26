@@ -95,6 +95,8 @@ public class LanguageServerClient extends Thread implements LanguageClient {
      */
     private void initializeConnection(LanguageServer remoteProxy) {
         InitializeParams params = this.polyglotLSref.initializationParams;
+        params.getCapabilities().getWorkspace().getWorkspaceEdit().setDocumentChanges(false);
+        params.getCapabilities().getWorkspace().getWorkspaceEdit().setResourceOperations(new ArrayList<>());
         remoteProxy.initialize(params).thenApply(k -> {
             remoteProxy.initialized(new InitializedParams());
             this.initialized();
@@ -176,6 +178,19 @@ public class LanguageServerClient extends Thread implements LanguageClient {
         if(future == null) {
             this.clientLogger.logMessage("Request from LS "+this.language);
             return this.remoteEndpoint.request("textDocument/hover", params);
+        }
+        return future;
+    }
+
+    /**
+     * Send rename LSP Request to the language Server
+     * @param params RenameParams
+     */
+    public synchronized CompletableFuture<Object> renameRequest(RenameParams params){
+        CompletableFuture<Object> future = this.checkRequestPreInitialization(params, (param) -> {return this.renameRequest((RenameParams) param);});
+        if(future == null) {
+            this.clientLogger.logMessage("Request to LS "+this.language);
+            return this.remoteEndpoint.request("textDocument/rename", params);
         }
         return future;
     }

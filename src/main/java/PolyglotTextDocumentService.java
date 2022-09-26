@@ -1,5 +1,6 @@
 import com.example.polyglotast.*;
 import com.example.polyglotast.utils.*;
+import jsitter.api.Zipper;
 import kotlin.Pair;
 import org.eclipse.lsp4j.*;
 import org.eclipse.lsp4j.jsonrpc.messages.Either;
@@ -572,6 +573,159 @@ public class PolyglotTextDocumentService implements TextDocumentService {
             if(info.hoverRegex == null || info.hoverRegex.equals("")) return null;
             return new Pair<>(info.hoverRegex, info.hoverRegexGroup);
         }
+        return null;
+    }
+
+    /**
+     * ############################################# RENAME REQUEST ####################################################
+     */
+
+    @Override
+    public CompletableFuture<WorkspaceEdit> rename(RenameParams params) {
+        try{
+            clientLogger.logMessage("Rename request received");
+
+            String newName = params.getNewName();
+            PolyglotTreeHandler tree = PolyglotTreeHandler.getfilePathToTreeHandler().get(Paths.get(new URI(params.getTextDocument().getUri())));
+            PolyglotZipper zipper = new PolyglotZipper(tree, tree.getNodeAtPosition(new Pair<>(params.getPosition().getLine(), params.getPosition().getCharacter())));
+            if((zipper.getType().equals("\"") || zipper.getType().equals("'")) && params.getPosition().getCharacter() > 0) zipper = new PolyglotZipper(tree, tree.getNodeAtPosition(new Pair<>(params.getPosition().getLine(), params.getPosition().getCharacter()-1)));
+            if(zipper.node != null){
+
+                String oldName = zipper.getCode();
+
+                PolyglotExpImpData data_renameVariable = getExpImpDataFromInsideNodeVariable(zipper);
+                PolyglotExpImpData data_renameStringName = getExpImpDataFromStringNameNode(zipper);
+                this.clientLogger.logMessage((data_renameStringName != null ? data_renameStringName.getVar_name() : "null data"));
+                if(data_renameStringName != null) {
+                    if(oldName.charAt(0) == '"') oldName = oldName.replaceAll("\"", "");
+                    else if(oldName.charAt(0) == '\'') oldName = oldName.replaceAll("'", "");
+                }
+
+                if(data_renameStringName == null && (data_renameVariable == null || !data_renameVariable.getVar_name().equals(oldName))){
+                    if(!zipper.getType().equals("identifier")) {
+                        return CompletableFuture.supplyAsync(() -> {
+                            return null;
+                        });
+                    }
+                    this.clientLogger.logMessage("Rename request to none polyglot variable");
+                    return this.languageServer.languageClientManager.renameRequest(params).thenApply((w) -> {
+                        this.clientLogger.logMessage(w.toString());
+                        return w;
+                    });
+                }
+
+                /*CompletableFuture<WorkspaceEdit> resultFuture = new CompletableFuture<>();
+                ArrayList<CompletableFuture<WorkspaceEdit>> futuresRenameRequests = new ArrayList<>();
+                HashMap<String, HashSet<String>> variableRenamed = new HashMap<>(); // textDocumentURI -> HashSet of variables renamed */
+
+                HashSet<PolyglotTreeHandler> hostTrees = tree.getHostTrees();
+                PolyglotVariableSpotter spotter = new PolyglotVariableSpotter();
+                for (PolyglotTreeHandler hostTree : hostTrees) {
+                    hostTree.apply(spotter);
+                }
+                HashMap<PolyglotTreeHandler, ArrayList<ExportData>> variablesSpottedExp = spotter.getExports().get(oldName);
+                HashMap<PolyglotTreeHandler, ArrayList<ImportData>> variablesSpottedImp = spotter.getImports().get(oldName);
+
+                WorkspaceEdit result = new WorkspaceEdit();
+                HashMap<String, List<TextEdit>> edits = new HashMap<>();
+
+                //this.clientLogger.logMessage(variablesSpottedImp.keySet().size()+"");
+
+                if(variablesSpottedImp != null) variablesSpottedImp.forEach((hostTree, imports) -> {
+                    for (ImportData imp : imports) {
+                        TextEdit e = new TextEdit();
+                        e.setNewText(newName);
+                        e.setRange(new Range(new Position(imp.getVar_name_position().component1(), imp.getVar_name_position().component2()), new Position(imp.getVar_name_position().component1(), imp.getVar_name_position().component2() + imp.getVar_name().length())));
+
+                        edits.computeIfAbsent(PolyglotTreeHandler.getfilePathOfTreeHandler().get(hostTree).toUri().toString(), k -> new ArrayList<>());
+                        edits.get(PolyglotTreeHandler.getfilePathOfTreeHandler().get(hostTree).toUri().toString()).add(e);
+
+                        /*if(imp.getVar_name().equals(imp.getStorageVariable())){
+                            variableRenamed.computeIfAbsent(PolyglotTreeHandler.getfilePathOfTreeHandler().get(hostTree).toUri().toString(), k -> new HashSet<>());
+                            if(!variableRenamed.get(PolyglotTreeHandler.getfilePathOfTreeHandler().get(hostTree).toUri().toString()).contains(imp.getStorageVariable())){
+                                variableRenamed.get(PolyglotTreeHandler.getfilePathOfTreeHandler().get(hostTree).toUri().toString()).add(imp.getStorageVariable());
+                                futuresRenameRequests.add(
+                                        this.languageServer.languageClientManager.renameRequest(
+                                                new RenameParams(
+                                                        new TextDocumentIdentifier(
+                                                                PolyglotTreeHandler.getfilePathOfTreeHandler().get(hostTree).toUri().toString()),
+                                                        new Position(imp.storageVarPosition.component1(),
+                                                                imp.storageVarPosition.component2()), newName)));
+                            }
+                        }*/
+                    }
+                });
+
+                if(variablesSpottedExp != null) variablesSpottedExp.forEach((hostTree, exports) -> {
+                    for (ExportData exp : exports) {
+                        TextEdit e = new TextEdit();
+                        e.setNewText(newName);
+                        e.setRange(new Range(new Position(exp.getVar_name_position().component1(), exp.getVar_name_position().component2()), new Position(exp.getVar_name_position().component1(), exp.getVar_name_position().component2() + exp.getVar_name().length())));
+
+                        edits.computeIfAbsent(PolyglotTreeHandler.getfilePathOfTreeHandler().get(hostTree).toUri().toString(), k -> new ArrayList<>());
+                        edits.get(PolyglotTreeHandler.getfilePathOfTreeHandler().get(hostTree).toUri().toString()).add(e);
+                    }
+                });
+
+                this.clientLogger.logMessage("test3");
+                result.setChanges(edits);
+                //return resultFuture;
+                return CompletableFuture.supplyAsync(() -> {
+                    return result;
+                });
+            }
+            return CompletableFuture.supplyAsync(() -> {
+                return null;
+            });
+        } catch (Exception e){
+            System.err.println(e);
+            return CompletableFuture.supplyAsync(() -> {
+                return null;
+            });
+        }
+    }
+
+    public PolyglotExpImpData getExpImpDataFromInsideNodeVariable(PolyglotZipper zipper){
+        String language = zipper.getLang();
+        Zipper zip = zipper.node;
+        switch(language) {
+            case "javascript":
+            case "js":
+                if(zip.right() != null && zip.right().right() != null && zipper.right().right().isImport()) return new ImportData(zipper.right().right());
+                if(zip.up() != null && zip.up().up() != null && zipper.up().up().isExport()) return new ExportData(zipper.up().up());
+                break;
+            case "python":
+                if(zip.right() != null && zip.right().right() != null && zipper.right().right().isImport()) return new ImportData(zipper.right().right());
+                if(zip.left() != null && zip.left().left() != null && zipper.left().left().getCode().equals("value") &&
+                        zip.up() != null && zip.up().up() != null && zip.up().up().up() != null && zipper.up().up().up().isExport()){
+                    return new ExportData(zipper.up().up().up());
+                }
+                break;
+        }
+        return null;
+    }
+
+    public PolyglotExpImpData getExpImpDataFromStringNameNode(PolyglotZipper zipper){
+        try{
+            String language = zipper.getLang();
+            Zipper zip = zipper.node;
+            switch(language) {
+                case "javascript":
+                case "js":
+                    if(zipper.getType().equals("string_fragment") && zip.up() != null && zip.up().up() != null && zip.up().up().up() != null && zipper.up().up().up().isImport()) return new ImportData(zipper.up().up().up());
+                    if(zipper.getType().equals("string_fragment") && zip.up() != null && zip.up().up() != null && zip.up().up().up() != null && zipper.up().up().up().isExport() &&
+                            zip.up().right() != null && zip.up().right().right() != null) return new ExportData(zipper.up().up().up());
+                    break;
+                case "python":
+                    if(zipper.getType().equals("string") && zip.up() != null && zip.up().up() != null){
+                        if(zipper.up().up().isImport()) return new ImportData(zipper.up().up());
+                        if(zip.up().up().up() != null && zipper.up().up().up().isImport()) return new ImportData(zipper.up().up().up());
+                    }
+                    if(zipper.getType().equals("string") && zip.up() != null && zip.up().up() != null && zip.up().up().up() != null && zipper.up().up().up().isExport() &&
+                            zip.left() != null && zip.left().left() != null && zipper.left().left().getCode().equals("name")) return new ExportData(zipper.up().up().up());
+                    break;
+            }
+        } catch (Exception e){}
         return null;
     }
 
