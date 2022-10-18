@@ -76,6 +76,24 @@ public class PolyglotLanguageServer implements LanguageServer, LanguageClientAwa
         // Set Rename Provider to true
         response.getCapabilities().setRenameProvider(true);
 
+        // Set Workspace capabilities (tests for enabling workspace operations capabilities)
+        /*FileOperationOptions fileOperationOptions = new FileOperationOptions();
+        FileOperationFilter fileOperationFilter = new FileOperationFilter();
+        fileOperationFilter.setScheme("file");
+        FileOperationPattern fileOperationPattern = new FileOperationPattern();*/
+        //fileOperationPattern.setGlob("**/*.{py,js}");
+        /*fileOperationPattern.setMatches(FileOperationPatternKind.File);
+        fileOperationFilter.setPattern(fileOperationPattern);
+        fileOperationOptions.setFilters(Arrays.asList(fileOperationFilter));*/
+
+        //response.getCapabilities().getWorkspace().getFileOperations().setDidCreate(fileOperationOptions);
+        //response.getCapabilities().getWorkspace().getFileOperations().setDidDelete(fileOperationOptions);
+
+        WorkspaceFoldersOptions workspaceFoldersOptions = new WorkspaceFoldersOptions();
+        workspaceFoldersOptions.setSupported(true);
+        workspaceFoldersOptions.setChangeNotifications(true);
+        //response.getCapabilities().getWorkspace().setWorkspaceFolders(workspaceFoldersOptions);
+
         // Get server properties
         this.properties = getProperties();
         if(this.properties == null){

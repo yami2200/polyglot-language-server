@@ -1,6 +1,4 @@
-import org.eclipse.lsp4j.DidChangeConfigurationParams;
-import org.eclipse.lsp4j.DidChangeWatchedFilesParams;
-import org.eclipse.lsp4j.RenameFilesParams;
+import org.eclipse.lsp4j.*;
 import org.eclipse.lsp4j.services.WorkspaceService;
 
 public class PolyglotWorkspaceService implements WorkspaceService {
@@ -39,5 +37,15 @@ public class PolyglotWorkspaceService implements WorkspaceService {
     @Override
     public void didChangeWatchedFiles(DidChangeWatchedFilesParams didChangeWatchedFilesParams) {
         this.clientLogger.logMessage("Operation 'workspace/didChangeWatchedFiles' Ack");
+    }
+
+    @Override
+    public void didCreateFiles(CreateFilesParams params) {
+        this.clientLogger.logMessage("Operation 'workspace/didCreateFiles' Ack : "+params.toString());
+    }
+
+    @Override
+    public void didDeleteFiles(DeleteFilesParams params) {
+        this.clientLogger.logMessage("Operation 'workspace/didDeleteFiles' Ack : "+params.toString());
     }
 }

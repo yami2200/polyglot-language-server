@@ -95,8 +95,9 @@ public class LanguageServerClient extends Thread implements LanguageClient {
      */
     private void initializeConnection(LanguageServer remoteProxy) {
         InitializeParams params = this.polyglotLSref.initializationParams;
-        params.getCapabilities().getWorkspace().getWorkspaceEdit().setDocumentChanges(false);
-        params.getCapabilities().getWorkspace().getWorkspaceEdit().setResourceOperations(new ArrayList<>());
+        // Params can be use to constrain rename workspace edit types
+        //params.getCapabilities().getWorkspace().getWorkspaceEdit().setDocumentChanges(false);
+        //params.getCapabilities().getWorkspace().getWorkspaceEdit().setResourceOperations(new ArrayList<>());
         remoteProxy.initialize(params).thenApply(k -> {
             remoteProxy.initialized(new InitializedParams());
             this.initialized();
