@@ -494,7 +494,8 @@ public class PolyglotTextDocumentService implements TextDocumentService {
                     // The variable was exported directly with a raw value
                     if(result.typeResult.equals(PolyglotTypeVisitor.TypeResultEnum.VALUETYPE)){
                         return CompletableFuture.supplyAsync(() -> {
-                            return getHoverObject(zipper, result.type, hostTree, hostTrees.size());
+                            Hover hov =getHoverObject(zipper, result.type, hostTree, hostTrees.size());
+                            return hov;
                         });
                         // The variable was exported with a variable
                     } else if (result.typeResult.equals(PolyglotTypeVisitor.TypeResultEnum.EXPORTTYPE)){
@@ -512,7 +513,8 @@ public class PolyglotTextDocumentService implements TextDocumentService {
                                 String text = h.getContents().toString();
                                 Matcher m = p.matcher(text);
                                 if(m.find()){
-                                    return getHoverObject(zipper, m.group(hoverInfo.component2()).replaceAll("\\\\n", "\n"), hostTree, hostTrees.size());
+                                    Hover hover = getHoverObject(zipper, m.group(hoverInfo.component2()).replaceAll("\\\\n", "\n"), hostTree, hostTrees.size());
+                                    return hover;
                                 }
                             }
                             // Regex didn't worked, just return the hover result from the language server
@@ -580,44 +582,50 @@ public class PolyglotTextDocumentService implements TextDocumentService {
      * ############################################# RENAME REQUEST ####################################################
      */
 
+    /**
+     * LSP rename Request Handler
+     * @param params RenameParams
+     * @return WorkspaceEdit of all fields to edit with the new name
+     */
     @Override
     public CompletableFuture<WorkspaceEdit> rename(RenameParams params) {
         try{
-            clientLogger.logMessage("Rename request received");
-
             String newName = params.getNewName();
             PolyglotTreeHandler tree = PolyglotTreeHandler.getfilePathToTreeHandler().get(Paths.get(new URI(params.getTextDocument().getUri())));
             PolyglotZipper zipper = new PolyglotZipper(tree, tree.getNodeAtPosition(new Pair<>(params.getPosition().getLine(), params.getPosition().getCharacter())));
+            // Specific condition when the rename request is made on the last char of the variable name
             if((zipper.getType().equals("\"") || zipper.getType().equals("'")) && params.getPosition().getCharacter() > 0) zipper = new PolyglotZipper(tree, tree.getNodeAtPosition(new Pair<>(params.getPosition().getLine(), params.getPosition().getCharacter()-1)));
+
             if(zipper.node != null){
-
                 String oldName = zipper.getCode();
-
                 PolyglotExpImpData data_renameVariable = getExpImpDataFromInsideNodeVariable(zipper);
                 PolyglotExpImpData data_renameStringName = getExpImpDataFromStringNameNode(zipper);
-                this.clientLogger.logMessage((data_renameStringName != null ? data_renameStringName.getVar_name() : "null data"));
                 if(data_renameStringName != null) {
                     if(oldName.charAt(0) == '"') oldName = oldName.replaceAll("\"", "");
                     else if(oldName.charAt(0) == '\'') oldName = oldName.replaceAll("'", "");
                 }
 
+                // if rename is made to a statement that is not polyglot
                 if(data_renameStringName == null && (data_renameVariable == null || !data_renameVariable.getVar_name().equals(oldName))){
+                    // Can't rename a field that is not an identifier
                     if(!zipper.getType().equals("identifier")) {
                         return CompletableFuture.supplyAsync(() -> {
                             return null;
                         });
                     }
+                    // Return result from proper language server
                     this.clientLogger.logMessage("Rename request to none polyglot variable");
                     return this.languageServer.languageClientManager.renameRequest(params).thenApply((w) -> {
-                        this.clientLogger.logMessage(w.toString());
                         return w;
                     });
                 }
 
-                /*CompletableFuture<WorkspaceEdit> resultFuture = new CompletableFuture<>();
+                /** variables that could be used to concatenate result from different language server requests later
+                 CompletableFuture<WorkspaceEdit> resultFuture = new CompletableFuture<>();
                 ArrayList<CompletableFuture<WorkspaceEdit>> futuresRenameRequests = new ArrayList<>();
-                HashMap<String, HashSet<String>> variableRenamed = new HashMap<>(); // textDocumentURI -> HashSet of variables renamed */
+                HashMap<String, HashSet<String>> variableRenamed = new HashMap<>(); // textDocumentURI -> HashSet of variables renamed **/
 
+                // Spot the polyglot variables in the ast
                 HashSet<PolyglotTreeHandler> hostTrees = tree.getHostTrees();
                 PolyglotVariableSpotter spotter = new PolyglotVariableSpotter();
                 for (PolyglotTreeHandler hostTree : hostTrees) {
@@ -629,8 +637,7 @@ public class PolyglotTextDocumentService implements TextDocumentService {
                 WorkspaceEdit result = new WorkspaceEdit();
                 HashMap<String, List<TextEdit>> edits = new HashMap<>();
 
-                //this.clientLogger.logMessage(variablesSpottedImp.keySet().size()+"");
-
+                // Create TextEdit result for each import variable spotted
                 if(variablesSpottedImp != null) variablesSpottedImp.forEach((hostTree, imports) -> {
                     for (ImportData imp : imports) {
                         TextEdit e = new TextEdit();
@@ -640,7 +647,8 @@ public class PolyglotTextDocumentService implements TextDocumentService {
                         edits.computeIfAbsent(PolyglotTreeHandler.getfilePathOfTreeHandler().get(hostTree).toUri().toString(), k -> new ArrayList<>());
                         edits.get(PolyglotTreeHandler.getfilePathOfTreeHandler().get(hostTree).toUri().toString()).add(e);
 
-                        /*if(imp.getVar_name().equals(imp.getStorageVariable())){
+                        /** can be used to prepare request to others language servers to rename variables that store polyglot import or that are exported
+                        if(imp.getVar_name().equals(imp.getStorageVariable())){
                             variableRenamed.computeIfAbsent(PolyglotTreeHandler.getfilePathOfTreeHandler().get(hostTree).toUri().toString(), k -> new HashSet<>());
                             if(!variableRenamed.get(PolyglotTreeHandler.getfilePathOfTreeHandler().get(hostTree).toUri().toString()).contains(imp.getStorageVariable())){
                                 variableRenamed.get(PolyglotTreeHandler.getfilePathOfTreeHandler().get(hostTree).toUri().toString()).add(imp.getStorageVariable());
@@ -656,6 +664,7 @@ public class PolyglotTextDocumentService implements TextDocumentService {
                     }
                 });
 
+                // Create TextEdit result for each export variable spotted
                 if(variablesSpottedExp != null) variablesSpottedExp.forEach((hostTree, exports) -> {
                     for (ExportData exp : exports) {
                         TextEdit e = new TextEdit();
@@ -667,9 +676,7 @@ public class PolyglotTextDocumentService implements TextDocumentService {
                     }
                 });
 
-                this.clientLogger.logMessage("test3");
                 result.setChanges(edits);
-                //return resultFuture;
                 return CompletableFuture.supplyAsync(() -> {
                     return result;
                 });
@@ -685,6 +692,11 @@ public class PolyglotTextDocumentService implements TextDocumentService {
         }
     }
 
+    /**
+     * Return PolyglotExpImpData from a zipper pointing to variable that is exported or used to store a polyglot import
+     * @param zipper zipper pointing to variable that is exported or used to store a polyglot import
+     * @return PolyglotExpImpData from a zipper pointing to variable that is exported or used to store a polyglot import
+     */
     public PolyglotExpImpData getExpImpDataFromInsideNodeVariable(PolyglotZipper zipper){
         String language = zipper.getLang();
         Zipper zip = zipper.node;
@@ -705,6 +717,12 @@ public class PolyglotTextDocumentService implements TextDocumentService {
         return null;
     }
 
+
+    /**
+     * Return PolyglotExpImpData from a zipper pointing to the string parameter (representing the name of the polyglot var) of the export/import line
+     * @param zipper zipper pointing to the string parameter (representing the name of the polyglot var) of the export/import line
+     * @return PolyglotExpImpData representing the export/import line
+     */
     public PolyglotExpImpData getExpImpDataFromStringNameNode(PolyglotZipper zipper){
         try{
             String language = zipper.getLang();
