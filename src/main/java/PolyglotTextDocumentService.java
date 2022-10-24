@@ -6,7 +6,9 @@ import org.eclipse.lsp4j.*;
 import org.eclipse.lsp4j.jsonrpc.messages.Either;
 import org.eclipse.lsp4j.services.TextDocumentService;
 
+import java.io.BufferedWriter;
 import java.io.File;
+import java.io.FileWriter;
 import java.io.IOException;
 import java.net.URI;
 import java.net.URISyntaxException;
@@ -483,7 +485,7 @@ public class PolyglotTextDocumentService implements TextDocumentService {
             // Get tree, get the tree node which is hovered, and verify if it's an identifier
             PolyglotTreeHandler tree = PolyglotTreeHandler.getfilePathToTreeHandler().get(Paths.get(new URI(params.getTextDocument().getUri())));
             PolyglotZipper zipper = new PolyglotZipper(tree, tree.getNodeAtPosition(new Pair<>(params.getPosition().getLine(), params.getPosition().getCharacter())));
-            if(zipper.node != null && zipper.getType().equals("identifier")){
+            if(zipper.node != null && (zipper.getType().equals("identifier") || zipper.getType().equals("shorthand_property_identifier_pattern"))){
                 // Loop through HostTrees to make typing visit, TODO : Handle multiple results from all Host for typing feature
                 HashSet<PolyglotTreeHandler> hostTrees = tree.getHostTrees();
                 for (PolyglotTreeHandler hostTree : hostTrees) {
@@ -494,7 +496,7 @@ public class PolyglotTextDocumentService implements TextDocumentService {
                     // The variable was exported directly with a raw value
                     if(result.typeResult.equals(PolyglotTypeVisitor.TypeResultEnum.VALUETYPE)){
                         return CompletableFuture.supplyAsync(() -> {
-                            Hover hov =getHoverObject(zipper, result.type, hostTree, hostTrees.size());
+                            Hover hov = getHoverObject(zipper, result.type, hostTree, hostTrees.size());
                             return hov;
                         });
                         // The variable was exported with a variable

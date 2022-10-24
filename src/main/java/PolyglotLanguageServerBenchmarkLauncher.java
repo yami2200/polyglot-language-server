@@ -36,9 +36,9 @@ public class PolyglotLanguageServerBenchmarkLauncher implements LanguageClient {
     static ArrayList<ImportData> imports = new ArrayList<>();
 
     // to edit
-    static int iteration = 250;
-    static String projectRoot = "/home/yami/Polyglot Language Server/benchmark-file-maker/src/main/resources/";
-    static String hostPath = "/home/yami/Polyglot Language Server/benchmark-file-maker/src/main/resources/100ExportsImports3/2files_host_1,6k.py";
+    static int iteration = 200;
+    static String projectRoot = "/path/to/dataset/folder/";
+    static String hostPath = "/path/to/polyglotHostFile/";
     static String hostLanguage = "python";
 
     public static void main(String[] args) throws IOException, InterruptedException {
@@ -148,7 +148,7 @@ public class PolyglotLanguageServerBenchmarkLauncher implements LanguageClient {
         params.setTextDocument(tdi);
         remoteEndpoint.notify("textDocument/didOpen", params);
 
-        lock.await(7000, TimeUnit.MILLISECONDS);
+        lock.await(1200, TimeUnit.MILLISECONDS);
 
         System.out.println("Iteration " + current_it + " done");
         current_it++;
@@ -162,7 +162,12 @@ public class PolyglotLanguageServerBenchmarkLauncher implements LanguageClient {
         Position pos = new Position();
         pos.setLine(3);
         pos.setCharacter(0);
-        file = new File(((Path)PolyglotTreeHandler.getfilePathToTreeHandler().keySet().toArray()[new Random().nextInt(PolyglotTreeHandler.getfilePathToTreeHandler().keySet().size())]).toString());
+        ArrayList<String> list = new ArrayList<>();
+        list.add(hostPath);
+        for (PolyglotTreeHandler subTree : PolyglotTreeHandler.getfilePathToTreeHandler().get(Paths.get(hostPath)).getSubTrees()) {
+            list.add(PolyglotTreeHandler.getfilePathOfTreeHandler().get(subTree).toString());
+        }
+        file = new File(list.get(new Random().nextInt(list.size())));
         Path path = Path.of(file.getAbsolutePath());
         CompletionParams params = new CompletionParams();
         TextDocumentIdentifier tdi = new TextDocumentIdentifier();
@@ -173,6 +178,8 @@ public class PolyglotLanguageServerBenchmarkLauncher implements LanguageClient {
             lock.countDown();
             return k;
         });
+
+        lock.await(3000, TimeUnit.MILLISECONDS);
 
         System.out.println("Iteration " + current_it + " done");
         current_it++;
@@ -207,11 +214,14 @@ public class PolyglotLanguageServerBenchmarkLauncher implements LanguageClient {
         params.setNewName("test"+new Random().nextInt(10000));
 
         remoteEndpoint.request("textDocument/rename", params).thenApply(k -> {
-            System.out.println(k);
-            if(k==null) current_it--;
+            if(k==null) {
+                current_it--;
+            }
             lock.countDown();
             return k;
         });
+
+        lock.await(3000, TimeUnit.MILLISECONDS);
 
         System.out.println("Iteration " + current_it + " done");
         current_it++;
@@ -246,6 +256,13 @@ public class PolyglotLanguageServerBenchmarkLauncher implements LanguageClient {
                 if(k==null) {
                     current_it--;
                     imports.remove(finalIndex);
+                } else {
+                    Hover hov = (Hover) k;
+                    if(hov.getContents().getRight().getValue().equals("")){
+                        System.out.println("failed hover");
+                        current_it--;
+                        imports.remove(finalIndex);
+                    }
                 }
                 lock.countDown();
                 return k;
